@@ -1,0 +1,10 @@
+[project]
+name = "maibao-field-shortcut-backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "alibabacloud-oss-v2>=1.2.5",
+    "flask>=3.1.3",
+]
