@@ -1,34 +1,57 @@
 # maibao-field-shortcut-backend
 
-一个最小可运行的 Flask demo，用来承接后续这条链路：
+一个最小可运行的 Flask backend，用于承接字段捷径后的处理链路：
 
-1. 调用模型生成图片
-2. 上传图片到 OSS
-3. 返回图片 URL 给字段捷径
+1. 接收字段捷径请求
+2. 调用 Gemini 模型生成图片
+3. 上传图片到 OSS
+4. 返回 OSS URL 给字段捷径
 
-当前版本先把服务骨架和接口跑通，还没有接入真实的 Maibao 和 OSS。
+当前已接入：
+- HTTP 接口骨架
+- JSON / multipart 两种输入解析
+- Gemini-only 请求规划
+- 真实 Maibao 调用
+- 真实 OSS 上传
 
-## 本地运行
+## 配置
 
-```powershell
-uv run python main.py
-```
+后端代码统一通过环境变量读取配置。
 
-默认监听：
-
-- `http://127.0.0.1:5000`
-
-可选环境变量：
-
+常用变量：
+- `MAIBAO_API_URL`
+- `NANO_BANANA_2_MODEL_ID`
+- `NANO_BANANA_PRO_MODEL_ID`
+- `OSS_ENDPOINT`
+- `OSS_BUCKET_NAME`
+- `OSS_BUCKET_FOLDER_PREFIX`
+- `OSS_ACCESS_KEY_ID`
+- `OSS_ACCESS_KEY_SECRET`
+- `LOG_LEVEL`
 - `FLASK_HOST`
 - `FLASK_PORT`
 - `FLASK_DEBUG`
+
+说明：
+- Maibao API Key 不再从环境变量读取
+- Maibao API Key 必须从请求头 `Authorization: Bearer <maibao-api-key>` 传入
+
+## 本地运行
+
+推荐通过 `uv` 在启动时注入 `.env`：
+
+```powershell
+uv run --env-file .env python main.py
+```
+
+默认监听：
+- `http://127.0.0.1:5000`
 
 示例：
 
 ```powershell
 $env:FLASK_PORT="5050"
-uv run python main.py
+uv run --env-file .env python main.py
 ```
 
 ## 接口
@@ -39,48 +62,26 @@ uv run python main.py
 Invoke-WebRequest http://127.0.0.1:5000/health
 ```
 
-### 图片生成占位接口
+### 图片处理接口
 
 ```powershell
+$headers = @{
+  Authorization = "Bearer your-maibao-api-key"
+}
+
 $body = @{
-  prompt = "生成一张极简风格的产品海报"
-  model = "gemini-3.1-flash-image-preview"
-  attachments = @(
+  requestId = "req-001"
+  prompt = "生成一张极简风格的海报"
+  model = "gemini-model-id-from-env"
+  fileUrls = @(
     "https://example.com/reference-1.png"
   )
 } | ConvertTo-Json
 
 Invoke-RestMethod `
   -Method Post `
-  -Uri http://127.0.0.1:5000/api/v1/generate-image `
+  -Uri http://127.0.0.1:5000/api/process-image `
+  -Headers $headers `
   -ContentType "application/json" `
   -Body $body
-```
-
-当前返回的是 demo 数据，便于先联调调用链和返回格式。
-
-## OSS 上传 Demo
-
-项目里额外提供了一个独立的 OSS SDK V2 上传脚本：
-
-- `oss_upload_demo.py`
-
-它会从项目根目录的 `.env` 读取这些变量：
-
-- `OSS_ENDPOINT`
-- `OSS_ACCESS_KEY_ID`
-- `OSS_ACCESS_KEY_SECRET`
-- `OSS_BUCKET_NAME`
-- `OSS_BUCKET_FOLDER_PREFIX`
-
-默认上传一段内存文本：
-
-```powershell
-uv run python oss_upload_demo.py
-```
-
-也支持上传本地文件：
-
-```powershell
-uv run python oss_upload_demo.py --file .\README.md
 ```
