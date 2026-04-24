@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  maibao-field-shortcut:
+    container_name: maibao-field-shortcut
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "5000:5000"
+    restart: on-failure

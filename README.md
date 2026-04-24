@@ -28,30 +28,26 @@
 - `OSS_ACCESS_KEY_ID`
 - `OSS_ACCESS_KEY_SECRET`
 - `LOG_LEVEL`
-- `FLASK_HOST`
-- `FLASK_PORT`
-- `FLASK_DEBUG`
 
 说明：
-- Maibao API Key 不再从环境变量读取
 - Maibao API Key 必须从请求头 `Authorization: Bearer <maibao-api-key>` 传入
 
-## 本地运行
+## Docker
+构建
+```bash
+cd <path-to-workspace>/maibao-filed-shortcut-backend
 
-推荐通过 `uv` 在启动时注入 `.env`：
-
-```powershell
-uv run --env-file .env python main.py
+docker build -t maibao-field-shortcut .
 ```
 
-默认监听：
-- `http://127.0.0.1:5000`
+启动
+```bash
+docker run --name maibao-field-shortcut --env-file .env -p 5000:5000 maibao-field-shortcut
+```
 
-示例：
-
-```powershell
-$env:FLASK_PORT="5050"
-uv run --env-file .env python main.py
+compose
+```
+docker compose up --build
 ```
 
 ## 接口
@@ -72,7 +68,7 @@ $headers = @{
 $body = @{
   requestId = "req-001"
   prompt = "生成一张极简风格的海报"
-  model = "gemini-model-id-from-env"
+  model = "gemini-3.1-flash-image-preview"
   fileUrls = @(
     "https://example.com/reference-1.png"
   )

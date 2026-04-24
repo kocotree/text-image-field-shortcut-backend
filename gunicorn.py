@@ -1,15 +1,17 @@
-import os
+bind = "0.0.0.0:5000"
 
-bind = os.getenv("GUNICORN_BIND", "0.0.0.0:5000")
-workers = int(os.getenv("GUNICORN_WORKERS", "2"))
-worker_class = os.getenv("GUNICORN_WORKER_CLASS", "gthread")
-threads = int(os.getenv("GUNICORN_THREADS", "8"))
+workers = 2
+worker_class = "gthread"
+threads = 8
 
-timeout = int(os.getenv("GUNICORN_TIMEOUT", "360"))
-graceful_timeout = int(os.getenv("GUNICORN_GRACEFUL_TIMEOUT", "30"))
-keepalive = int(os.getenv("GUNICORN_KEEPALIVE", "5"))
+timeout = 420
+graceful_timeout = 30
+keepalive = 5
+
+max_requests = 500
+max_requests_jitter = 50
 
 accesslog = "-"
 errorlog = "-"
-loglevel = os.getenv("GUNICORN_LOG_LEVEL", "info")
+loglevel = "info"
 capture_output = True
