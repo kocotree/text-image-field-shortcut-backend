@@ -2,6 +2,7 @@ version: "3.9"
 
 services:
   maibao-field-shortcut:
+    image: maibao-field-shortcut:latest
     container_name: maibao-field-shortcut
     build:
       context: .
