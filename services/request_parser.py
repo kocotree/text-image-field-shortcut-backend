@@ -6,6 +6,27 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+SUPPORTED_IMAGE_SIZES = ("1K", "2K", "4K")
+SUPPORTED_ASPECT_RATIOS = (
+    "1:1",
+    "2:3",
+    "3:2",
+    "3:4",
+    "4:3",
+    "4:5",
+    "5:4",
+    "9:16",
+    "16:9",
+    "21:9",
+)
+DEFAULT_IMAGE_SIZE = "1K"
+DEFAULT_ASPECT_RATIO = "1:1"
+MAX_REFERENCE_IMAGE_COUNT = 14
+
+
+class RequestValidationError(ValueError):
+    pass
+
 
 @dataclass
 class UploadedFileInfo:
@@ -29,6 +50,8 @@ class GenerateImageRequest:
     request_id: str
     prompt: str
     model: str
+    aspect_ratio: str
+    image_size: str
     input_type: str
     file_urls: list[str]
     files: list[UploadedFileInfo]
@@ -39,6 +62,8 @@ class GenerateImageRequest:
             "requestId": self.request_id,
             "prompt": self.prompt,
             "model": self.model,
+            "aspectRatio": self.aspect_ratio,
+            "imageSize": self.image_size,
             "inputType": self.input_type,
             "fileUrlCount": len(self.file_urls),
             "fileCount": len(self.files),
@@ -63,6 +88,36 @@ def _normalize_url_values(*values: Any) -> list[str]:
             urls.append(text)
 
     return urls
+
+
+def _resolve_request_value(is_json_request: bool, payload: dict[str, Any], form_data: Any, key: str, default: str = "") -> str:
+    return _stringify(payload.get(key) if is_json_request else form_data.get(key), default=default)
+
+
+def _normalize_image_size(value: Any) -> str:
+    normalized = _stringify(value, DEFAULT_IMAGE_SIZE).upper()
+    if normalized not in SUPPORTED_IMAGE_SIZES:
+        raise RequestValidationError(
+            f"Unsupported imageSize: {normalized}. Supported values: {', '.join(SUPPORTED_IMAGE_SIZES)}."
+        )
+    return normalized
+
+
+def _normalize_aspect_ratio(value: Any) -> str:
+    normalized = _stringify(value, DEFAULT_ASPECT_RATIO).replace(" ", "")
+    if normalized not in SUPPORTED_ASPECT_RATIOS:
+        raise RequestValidationError(
+            f"Unsupported aspectRatio: {normalized}. Supported values: {', '.join(SUPPORTED_ASPECT_RATIOS)}."
+        )
+    return normalized
+
+
+def _validate_reference_count(file_urls: list[str], files: list[UploadedFileInfo]) -> None:
+    reference_count = len(file_urls) + len(files)
+    if reference_count > MAX_REFERENCE_IMAGE_COUNT:
+        raise RequestValidationError(
+            f"Too many reference images: {reference_count}. The current limit is {MAX_REFERENCE_IMAGE_COUNT}."
+        )
 
 
 def _collect_uploaded_files(flask_request: Any) -> list[UploadedFileInfo]:
@@ -93,6 +148,7 @@ def parse_generate_image_request(flask_request: Any) -> GenerateImageRequest:
         form_data.getlist("fileUrls"),
     )
     files = _collect_uploaded_files(flask_request)
+    _validate_reference_count(file_urls, files)
 
     if files and file_urls:
         input_type = "mixed"
@@ -103,12 +159,14 @@ def parse_generate_image_request(flask_request: Any) -> GenerateImageRequest:
     else:
         input_type = "empty"
 
-    prompt = _stringify(payload.get("prompt") if is_json_request else form_data.get("prompt"))
-    model = _stringify(
-        payload.get("model") if is_json_request else form_data.get("model"),
+    prompt = _resolve_request_value(is_json_request, payload, form_data, "prompt")
+    model = _resolve_request_value(is_json_request, payload, form_data, "model")
+    request_id = _resolve_request_value(is_json_request, payload, form_data, "requestId")
+    aspect_ratio = _normalize_aspect_ratio(
+        payload.get("aspectRatio") if is_json_request else form_data.get("aspectRatio")
     )
-    request_id = _stringify(
-        payload.get("requestId") if is_json_request else form_data.get("requestId"),
+    image_size = _normalize_image_size(
+        payload.get("imageSize") if is_json_request else form_data.get("imageSize")
     )
 
     raw_payload = payload if is_json_request else form_data.to_dict(flat=False)
@@ -117,6 +175,8 @@ def parse_generate_image_request(flask_request: Any) -> GenerateImageRequest:
         request_id=request_id,
         prompt=prompt,
         model=model,
+        aspect_ratio=aspect_ratio,
+        image_size=image_size,
         input_type=input_type,
         file_urls=file_urls,
         files=files,
@@ -129,6 +189,8 @@ def parse_generate_image_request(flask_request: Any) -> GenerateImageRequest:
             "requestId": parsed_request.request_id,
             "promptLength": len(parsed_request.prompt or ""),
             "model": parsed_request.model,
+            "aspectRatio": parsed_request.aspect_ratio,
+            "imageSize": parsed_request.image_size,
             "inputType": parsed_request.input_type,
             "fileUrlCount": len(parsed_request.file_urls),
             "fileCount": len(parsed_request.files),

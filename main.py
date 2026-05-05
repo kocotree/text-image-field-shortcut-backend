@@ -10,7 +10,7 @@ from flask import Flask, jsonify, request
 
 from services.image_pipeline import process_image_request
 from services.request_auth import RequestAuthError, verify_base_request
-from services.request_parser import parse_generate_image_request
+from services.request_parser import RequestValidationError, parse_generate_image_request
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +185,22 @@ def create_app() -> Flask:
                 success=False,
                 message=str(error),
                 status_code=HTTPStatus.FORBIDDEN,
+            )
+        except RequestValidationError as error:
+            logger.warning(
+                "maibao.backend.request.result: %s",
+                _build_result_log_summary(
+                    success=False,
+                    status_code=HTTPStatus.BAD_REQUEST,
+                    message=str(error),
+                    normalized_request=normalized_request,
+                    error=error,
+                ),
+            )
+            return build_json_response(
+                success=False,
+                message=str(error),
+                status_code=HTTPStatus.BAD_REQUEST,
             )
         except Exception as error:
             logger.error(

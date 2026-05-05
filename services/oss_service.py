@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import logging
 from pathlib import Path
+import re
 from urllib import request
 
 import alibabacloud_oss_v2 as oss
 
 from services.response_normalizer import NormalizedGeneratedAsset
 from services.settings import AppSettings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -58,8 +62,16 @@ def create_oss_client(settings: AppSettings) -> oss.Client:
     return oss.Client(cfg)
 
 
+def _looks_like_timestamp_name(file_name: str) -> bool:
+    stem = Path(str(file_name or "")).stem
+    return bool(re.match(r"^\d{4}-\d{2}-\d{2}[_-]\d{2}[-_]\d{2}[-_]\d{2}", stem) or re.match(r"^\d{8}[_-]?\d{6}", stem))
+
+
 def _resolve_file_name(asset: NormalizedGeneratedAsset) -> str:
-    suffix = Path(asset.file_name or "").suffix or ".bin"
+    original_name = Path(asset.file_name or "").name
+    suffix = Path(original_name).suffix or ".bin"
+    if original_name and _looks_like_timestamp_name(original_name):
+        return original_name
     return build_datetime_file_name(suffix)
 
 
@@ -81,6 +93,20 @@ def upload_asset_to_oss(settings: AppSettings, asset: NormalizedGeneratedAsset) 
     file_name = _resolve_file_name(asset)
     object_key = build_object_key(settings.oss.bucket_prefix, file_name)
     body = _resolve_asset_bytes(asset)
+
+    logger.debug(
+        "maibao.backend.oss.upload.start: %s",
+        {
+            "bucketName": settings.oss.bucket_name,
+            "endpoint": settings.oss.endpoint,
+            "objectKey": object_key,
+            "assetType": asset.asset_type,
+            "sourceKind": asset.source_kind,
+            "mimeType": asset.mime_type,
+            "bodyLength": len(body),
+        },
+    )
+
     client = create_oss_client(settings)
 
     result = client.put_object(
@@ -101,6 +127,18 @@ def upload_asset_to_oss(settings: AppSettings, asset: NormalizedGeneratedAsset) 
         object_url=build_object_url(settings.oss.bucket_name, settings.oss.endpoint, object_key),
         etag=getattr(result, "etag", ""),
         request_id=getattr(result, "request_id", ""),
+    )
+
+    logger.info(
+        "maibao.backend.oss.upload.success: %s",
+        {
+            "bucketName": upload_result.bucket_name,
+            "objectKey": upload_result.object_key,
+            "objectUrl": upload_result.object_url,
+            "etag": upload_result.etag,
+            "requestId": upload_result.request_id,
+            "bodyLength": len(body),
+        },
     )
 
     return upload_result

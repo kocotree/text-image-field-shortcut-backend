@@ -4,30 +4,69 @@ import base64
 import http.client
 import json
 import logging
+import mimetypes
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+from urllib import parse, request
 
 from services.request_parser import GenerateImageRequest, UploadedFileInfo
 from services.settings import AppSettings
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_MAIBAO_API_URL = "https://api.maibao.chat"
+DEFAULT_REFERENCE_FETCH_TIMEOUT = 120
+
+
+def _guess_mime_type(file_name: str, fallback: str = "application/octet-stream") -> str:
+    guessed, _ = mimetypes.guess_type(file_name)
+    return guessed or fallback
+
+
+def _safe_file_name(file_name: str, fallback: str) -> str:
+    clean_name = Path(str(file_name or "")).name.strip()
+    return clean_name or fallback
+
+
+def _build_inline_data_part(payload: bytes, mime_type: str) -> dict[str, Any]:
+    return {
+        "inline_data": {
+            "mime_type": mime_type,
+            "data": base64.b64encode(payload).decode("utf-8"),
+        }
+    }
+
+
+def _decode_data_url(value: str) -> tuple[str, bytes] | None:
+    prefix, separator, encoded = str(value or "").partition(",")
+    if not separator or not prefix.startswith("data:") or ";base64" not in prefix:
+        return None
+
+    mime_type = prefix.removeprefix("data:").split(";", 1)[0].strip() or "application/octet-stream"
+    return mime_type, base64.b64decode(encoded)
+
 
 @dataclass
 class PreparedReferenceInput:
     source_type: str
-    value: str
     mime_type: str
     file_name: str
+    payload: bytes
+    source_ref: str = ""
+    payload_size: int = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.payload_size = len(self.payload)
 
     def to_dict(self) -> dict[str, Any]:
-        preview = self.value if self.source_type == "url" else f"data:{self.mime_type};base64,..."
         return {
             "sourceType": self.source_type,
             "mimeType": self.mime_type,
             "fileName": self.file_name,
-            "preview": preview,
+            "payloadSize": self.payload_size,
+            "preview": self.source_ref or f"inline_data:{self.mime_type}",
         }
 
 
@@ -41,31 +80,35 @@ class MaibaoInvocationPlan:
     request_body: dict[str, Any]
 
     def _build_request_body_preview(self) -> dict[str, Any]:
-        content = self.request_body.get("messages", [{}])[0].get("content", [])
-        content_preview = []
-        for item in content:
-            if item.get("type") == "text":
-                content_preview.append(item)
+        parts = self.request_body.get("contents", [{}])[0].get("parts", [])
+        parts_preview = []
+        for item in parts:
+            if isinstance(item.get("text"), str):
+                parts_preview.append({"text": item["text"]})
                 continue
 
-            image_url = item.get("image_url", {}).get("url", "")
-            content_preview.append(
-                {
-                    "type": item.get("type"),
-                    "image_url": {
-                        "url": image_url if image_url.startswith("http") else "data:...base64",
-                    },
-                }
-            )
+            inline_data = item.get("inline_data", {})
+            if isinstance(inline_data, dict):
+                parts_preview.append(
+                    {
+                        "inline_data": {
+                            "mime_type": inline_data.get("mime_type", "application/octet-stream"),
+                            "data": "<base64>",
+                        }
+                    }
+                )
+                continue
+
+            parts_preview.append(item)
 
         return {
-            "model": self.request_body.get("model"),
-            "messages": [
+            "contents": [
                 {
                     "role": "user",
-                    "content": content_preview,
+                    "parts": parts_preview,
                 }
             ],
+            "generationConfig": self.request_body.get("generationConfig", {}),
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -99,7 +142,7 @@ class MaibaoRawResponse:
 def _normalize_api_url(api_url: str) -> str:
     normalized = str(api_url or "").strip().rstrip("/")
     base_url = normalized.removesuffix("/v1/chat/completions")
-    return base_url or "https://api.maibao.chat"
+    return base_url or DEFAULT_MAIBAO_API_URL
 
 
 def _build_endpoint(api_url: str, api_path: str) -> str:
@@ -107,57 +150,99 @@ def _build_endpoint(api_url: str, api_path: str) -> str:
     return f"{base_url}{api_path if not base_url.endswith('/v1') else api_path.removeprefix('/v1')}"
 
 
-def _read_file_as_data_url(uploaded_file: UploadedFileInfo) -> PreparedReferenceInput:
+def _read_file_as_inline_input(uploaded_file: UploadedFileInfo) -> PreparedReferenceInput:
     storage = uploaded_file.storage
     storage.stream.seek(0)
     file_bytes = storage.read()
     storage.stream.seek(0)
-    mime_type = uploaded_file.content_type or "application/octet-stream"
-    encoded = base64.b64encode(file_bytes).decode("utf-8")
+    mime_type = uploaded_file.content_type or _guess_mime_type(uploaded_file.file_name)
     return PreparedReferenceInput(
         source_type="file_stream",
-        value=f"data:{mime_type};base64,{encoded}",
         mime_type=mime_type,
         file_name=uploaded_file.file_name,
+        payload=file_bytes,
+        source_ref=uploaded_file.file_name,
+    )
+
+
+def _read_url_as_inline_input(file_url: str, timeout: int = DEFAULT_REFERENCE_FETCH_TIMEOUT) -> PreparedReferenceInput:
+    decoded_data_url = _decode_data_url(file_url)
+    if decoded_data_url:
+        mime_type, payload = decoded_data_url
+        return PreparedReferenceInput(
+            source_type="data_url",
+            mime_type=mime_type,
+            file_name=f"reference{mimetypes.guess_extension(mime_type) or '.bin'}",
+            payload=payload,
+            source_ref="data_url",
+        )
+
+    request_url = str(file_url or "").strip()
+    if not request_url:
+        raise RuntimeError("Encountered an empty reference image URL.")
+
+    url_parts = parse.urlparse(request_url)
+    fallback_name = Path(url_parts.path).name or "reference"
+
+    try:
+        with request.urlopen(request_url, timeout=timeout) as response:
+            payload = response.read()
+            response_mime_type = response.headers.get_content_type()
+    except Exception as exc:
+        raise RuntimeError(f"Failed to download reference image URL: {request_url}") from exc
+
+    mime_type = response_mime_type or _guess_mime_type(fallback_name)
+    file_name = _safe_file_name(fallback_name, f"reference{mimetypes.guess_extension(mime_type) or '.bin'}")
+    return PreparedReferenceInput(
+        source_type="url",
+        mime_type=mime_type,
+        file_name=file_name,
+        payload=payload,
+        source_ref=request_url,
     )
 
 
 def _prepare_reference_inputs(request_data: GenerateImageRequest) -> list[PreparedReferenceInput]:
-    prepared_inputs = [
-        PreparedReferenceInput(
-            source_type="url",
-            value=file_url,
-            mime_type="",
-            file_name="",
-        )
-        for file_url in request_data.file_urls
-    ]
-    prepared_inputs.extend(_read_file_as_data_url(uploaded_file) for uploaded_file in request_data.files)
+    prepared_inputs = [_read_url_as_inline_input(file_url) for file_url in request_data.file_urls]
+    prepared_inputs.extend(_read_file_as_inline_input(uploaded_file) for uploaded_file in request_data.files)
     return prepared_inputs
 
 
-def _build_gemini_request_body(prompt: str, prepared_inputs: list[PreparedReferenceInput], model: str) -> dict[str, Any]:
-    content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
-    content.extend(
-        {"type": "image_url", "image_url": {"url": item.value}}
-        for item in prepared_inputs
-    )
+def _build_gemini_request_body(
+    prompt: str,
+    prepared_inputs: list[PreparedReferenceInput],
+    aspect_ratio: str,
+    image_size: str,
+) -> dict[str, Any]:
+    parts: list[dict[str, Any]] = [{"text": prompt}]
+    parts.extend(_build_inline_data_part(item.payload, item.mime_type) for item in prepared_inputs)
     return {
-        "model": model,
-        "messages": [
+        "contents": [
             {
                 "role": "user",
-                "content": content,
+                "parts": parts,
             }
         ],
+        "generationConfig": {
+            "responseModalities": ["IMAGE"],
+            "imageConfig": {
+                "aspectRatio": aspect_ratio,
+                "imageSize": image_size,
+            },
+        },
     }
 
 
 def build_maibao_invocation_plan(request_data: GenerateImageRequest, settings: AppSettings) -> MaibaoInvocationPlan:
     prepared_inputs = _prepare_reference_inputs(request_data)
     resolved_model = request_data.model or settings.default_model_id
-    api_path = "/v1/chat/completions"
-    request_body = _build_gemini_request_body(request_data.prompt, prepared_inputs, resolved_model)
+    api_path = f"/v1beta/models/{resolved_model}:generateContent"
+    request_body = _build_gemini_request_body(
+        request_data.prompt,
+        prepared_inputs,
+        request_data.aspect_ratio,
+        request_data.image_size,
+    )
     return MaibaoInvocationPlan(
         api_url=_build_endpoint(settings.maibao_api_url, api_path),
         api_path=api_path,
@@ -210,7 +295,6 @@ def invoke_maibao(invocation_plan: MaibaoInvocationPlan, api_key: str, timeout: 
         response_body = response.read()
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
-        # 图片生成时长
         logger.info(
             "maibao.backend.maibao.generation_time: %s",
             {

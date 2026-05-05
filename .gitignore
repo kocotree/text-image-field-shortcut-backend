@@ -12,3 +12,5 @@ wheels/
 # Local environment and runtime logs
 .env
 *.log
+./tmp
+./scripts

@@ -65,6 +65,17 @@ def _extract_assistant_text(value: Any) -> str:
             item if isinstance(item, str) else str(item.get("text", ""))
             for item in message_content
         ).strip()
+    candidate_parts = (
+        value.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+        if isinstance(value, dict)
+        else []
+    )
+    if isinstance(candidate_parts, list):
+        return "\n".join(
+            str(item.get("text", "")).strip()
+            for item in candidate_parts
+            if isinstance(item, dict) and str(item.get("text", "")).strip()
+        ).strip()
     return ""
 
 
@@ -115,6 +126,9 @@ def _find_base64_payload(value: Any) -> tuple[str, str]:
         inline_data = value.get("inline_data")
         if isinstance(inline_data, dict) and isinstance(inline_data.get("data"), str):
             return str(inline_data.get("mime_type") or "image/png"), inline_data["data"]
+        inline_data = value.get("inlineData")
+        if isinstance(inline_data, dict) and isinstance(inline_data.get("data"), str):
+            return str(inline_data.get("mimeType") or "image/png"), inline_data["data"]
         for item in value.values():
             found = _find_base64_payload(item)
             if found[1]:
