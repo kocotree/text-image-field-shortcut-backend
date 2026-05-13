@@ -20,7 +20,6 @@ SUPPORTED_ASPECT_RATIOS = (
     "21:9",
 )
 DEFAULT_IMAGE_SIZE = "1K"
-DEFAULT_ASPECT_RATIO = "1:1"
 MAX_REFERENCE_IMAGE_COUNT = 14
 
 
@@ -50,7 +49,7 @@ class GenerateImageRequest:
     request_id: str
     prompt: str
     model: str
-    aspect_ratio: str
+    aspect_ratio: str | None
     image_size: str
     input_type: str
     file_urls: list[str]
@@ -104,7 +103,7 @@ def _normalize_image_size(value: Any) -> str:
 
 
 def _normalize_aspect_ratio(value: Any) -> str:
-    normalized = _stringify(value, DEFAULT_ASPECT_RATIO).replace(" ", "")
+    normalized = _stringify(value).replace(" ", "")
     if normalized not in SUPPORTED_ASPECT_RATIOS:
         raise RequestValidationError(
             f"Unsupported aspectRatio: {normalized}. Supported values: {', '.join(SUPPORTED_ASPECT_RATIOS)}."
@@ -162,9 +161,8 @@ def parse_generate_image_request(flask_request: Any) -> GenerateImageRequest:
     prompt = _resolve_request_value(is_json_request, payload, form_data, "prompt")
     model = _resolve_request_value(is_json_request, payload, form_data, "model")
     request_id = _resolve_request_value(is_json_request, payload, form_data, "requestId")
-    aspect_ratio = _normalize_aspect_ratio(
-        payload.get("aspectRatio") if is_json_request else form_data.get("aspectRatio")
-    )
+    raw_aspect_ratio = payload.get("aspectRatio") if is_json_request else form_data.get("aspectRatio")
+    aspect_ratio = _normalize_aspect_ratio(raw_aspect_ratio) if _stringify(raw_aspect_ratio) else None
     image_size = _normalize_image_size(
         payload.get("imageSize") if is_json_request else form_data.get("imageSize")
     )

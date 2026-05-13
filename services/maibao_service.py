@@ -211,11 +211,17 @@ def _prepare_reference_inputs(request_data: GenerateImageRequest) -> list[Prepar
 def _build_gemini_request_body(
     prompt: str,
     prepared_inputs: list[PreparedReferenceInput],
-    aspect_ratio: str,
+    aspect_ratio: str | None,
     image_size: str,
 ) -> dict[str, Any]:
     parts: list[dict[str, Any]] = [{"text": prompt}]
     parts.extend(_build_inline_data_part(item.payload, item.mime_type) for item in prepared_inputs)
+    image_config = {
+        "imageSize": image_size,
+    }
+    if aspect_ratio:
+        image_config["aspectRatio"] = aspect_ratio
+
     return {
         "contents": [
             {
@@ -225,10 +231,7 @@ def _build_gemini_request_body(
         ],
         "generationConfig": {
             "responseModalities": ["IMAGE"],
-            "imageConfig": {
-                "aspectRatio": aspect_ratio,
-                "imageSize": image_size,
-            },
+            "imageConfig": image_config,
         },
     }
 

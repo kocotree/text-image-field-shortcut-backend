@@ -29,7 +29,7 @@
 | 字段 | 类型 | 必填 | 默认值 | 说明 |
 |---|---|---|---|---|
 | `prompt` | string | 否 | `""` | 文本提示词 |
-| `aspectRatio` | string | 否 | `1:1` | 输出图片比例 |
+| `aspectRatio` | string | 否 | 不填 | 输出图片比例；不传或传空时不下发该字段，保持模型默认比例 |
 | `imageSize` | string | 否 | `1K` | 输出分辨率档位 |
 | `fileUrl` | string | 否 | - | 单个参考图 URL |
 | `fileUrls` | string[] | 否 | - | 多个参考图 URL |
@@ -102,7 +102,7 @@
 说明：
 - `fileUrl` 和 `fileUrls` 会合并成同一个 URL 列表
 - `model` 可不传，不传时走 `.env` 默认模型
-- `aspectRatio` 不传时默认 `1:1`
+- `aspectRatio` 不传或传空时，后端不会向 Maibao/Gemini 请求体写入该字段，保持模型默认行为
 - `imageSize` 不传时默认 `1K`
 
 ### 方式 2：multipart/form-data + 文件流
@@ -125,7 +125,7 @@
 - `file` 适合单文件
 - `files` 适合多文件
 - `model` 可不传，不传时走 `.env` 默认模型
-- `aspectRatio` 不传时默认 `1:1`
+- `aspectRatio` 不传或传空时，后端不会向 Maibao/Gemini 请求体写入该字段，保持模型默认行为
 - `imageSize` 不传时默认 `1K`
 
 ## 返回格式
