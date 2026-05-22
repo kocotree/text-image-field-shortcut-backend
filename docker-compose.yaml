@@ -1,9 +1,9 @@
 version: "3.9"
 
 services:
-  maibao-field-shortcut:
-    image: maibao-field-shortcut:latest
-    container_name: maibao-field-shortcut
+  text-image-field-shortcut:
+    image: text-image-field-shortcut:1.2
+    container_name: text-image-field-shortcut
     build:
       context: .
       dockerfile: Dockerfile

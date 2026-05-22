@@ -182,7 +182,7 @@ def parse_generate_image_request(flask_request: Any) -> GenerateImageRequest:
     )
 
     logger.debug(
-        "maibao.backend.request_parser.parsed: %s",
+        "gemini.backend.request_parser.parsed: %s",
         {
             "requestId": parsed_request.request_id,
             "promptLength": len(parsed_request.prompt or ""),

@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from services.maibao_service import MaibaoRawResponse
+from services.gemini_service import GeminiRawResponse
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +171,7 @@ class NormalizedModelResult:
         }
 
 
-def normalize_maibao_response(raw_response: MaibaoRawResponse) -> NormalizedModelResult:
+def normalize_gemini_response(raw_response: GeminiRawResponse) -> NormalizedModelResult:
     content_type = raw_response.content_type
     content_disposition = raw_response.content_disposition
     raw_meta = raw_response.to_dict()

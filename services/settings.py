@@ -23,7 +23,8 @@ class OssSettings:
 
 @dataclass
 class AppSettings:
-    maibao_api_url: str
+    api_base_url: str
+    api_key: str
     nano_banana_2_model_id: str
     nano_banana_pro_model_id: str
     oss: OssSettings
@@ -37,7 +38,8 @@ def get_app_settings() -> AppSettings:
     oss_endpoint = normalize_endpoint(os.getenv("OSS_ENDPOINT", ""))
 
     return AppSettings(
-        maibao_api_url=os.getenv("MAIBAO_API_URL", "https://api.maibao.chat").strip(),
+        api_base_url=os.getenv("DEFAULT_API_URL", "https://easyrouter.io").strip(),
+        api_key=os.getenv("API_KEY", "").strip(),
         nano_banana_2_model_id=os.getenv("NANO_BANANA_2_MODEL_ID", "").strip(),
         nano_banana_pro_model_id=os.getenv("NANO_BANANA_PRO_MODEL_ID", "").strip(),
         oss=OssSettings(

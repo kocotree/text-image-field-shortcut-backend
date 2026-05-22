@@ -9,7 +9,7 @@
   - `gemini-3.1-flash-image-preview`
   - `gemini-3-pro-image-preview`
 - 模型默认从 `.env` 中的 `NANO_BANANA_2_MODEL_ID` / `NANO_BANANA_PRO_MODEL_ID` 读取
-- Maibao API key 只从请求头 `Authorization: Bearer <key>` 读取
+- API key 从服务端环境变量 `API_KEY` 读取，前端无需传入
 - 请求来源校验依赖两个请求头：`X-Base-Signature` 和 `X-Pack-Id`
 - 服务端会先对 `X-Base-Signature` 验签，再校验签名中的 `packID` 与 `X-Pack-Id` 一致
 
@@ -81,7 +81,6 @@
 - `Content-Type: application/json`
 - `X-Base-Signature: <context.baseSignature>`
 - `X-Pack-Id: <context.packID>`
-- `Authorization: Bearer <maibao-api-key>`
 
 请求体：
 
@@ -102,7 +101,7 @@
 说明：
 - `fileUrl` 和 `fileUrls` 会合并成同一个 URL 列表
 - `model` 可不传，不传时走 `.env` 默认模型
-- `aspectRatio` 不传或传空时，后端不会向 Maibao/Gemini 请求体写入该字段，保持模型默认行为
+- `aspectRatio` 不传或传空时，后端不会向 Gemini 请求体写入该字段，保持模型默认行为
 - `imageSize` 不传时默认 `1K`
 
 ### 方式 2：multipart/form-data + 文件流
@@ -110,7 +109,6 @@
 请求头：
 - `X-Base-Signature: <context.baseSignature>`
 - `X-Pack-Id: <context.packID>`
-- `Authorization: Bearer <maibao-api-key>`
 
 表单字段：
 - `requestId`
@@ -125,7 +123,7 @@
 - `file` 适合单文件
 - `files` 适合多文件
 - `model` 可不传，不传时走 `.env` 默认模型
-- `aspectRatio` 不传或传空时，后端不会向 Maibao/Gemini 请求体写入该字段，保持模型默认行为
+- `aspectRatio` 不传或传空时，后端不会向 Gemini 请求体写入该字段，保持模型默认行为
 - `imageSize` 不传时默认 `1K`
 
 ## 返回格式

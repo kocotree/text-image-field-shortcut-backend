@@ -11,12 +11,11 @@ from pathlib import Path
 from typing import Any
 from urllib import parse, request
 
-from services.request_parser import GenerateImageRequest, UploadedFileInfo
+from services.request_parser import GenerateImageRequest
 from services.settings import AppSettings
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MAIBAO_API_URL = "https://api.maibao.chat"
 DEFAULT_REFERENCE_FETCH_TIMEOUT = 120
 
 
@@ -71,7 +70,7 @@ class PreparedReferenceInput:
 
 
 @dataclass
-class MaibaoInvocationPlan:
+class GeminiInvocationPlan:
     api_url: str
     api_path: str
     model: str
@@ -124,7 +123,7 @@ class MaibaoInvocationPlan:
 
 
 @dataclass
-class MaibaoRawResponse:
+class GeminiRawResponse:
     status_code: int
     content_type: str
     content_disposition: str
@@ -142,7 +141,7 @@ class MaibaoRawResponse:
 def _normalize_api_url(api_url: str) -> str:
     normalized = str(api_url or "").strip().rstrip("/")
     base_url = normalized.removesuffix("/v1/chat/completions")
-    return base_url or DEFAULT_MAIBAO_API_URL
+    return base_url
 
 
 def _build_endpoint(api_url: str, api_path: str) -> str:
@@ -236,7 +235,7 @@ def _build_gemini_request_body(
     }
 
 
-def build_maibao_invocation_plan(request_data: GenerateImageRequest, settings: AppSettings) -> MaibaoInvocationPlan:
+def build_gemini_invocation_plan(request_data: GenerateImageRequest, settings: AppSettings) -> GeminiInvocationPlan:
     prepared_inputs = _prepare_reference_inputs(request_data)
     resolved_model = request_data.model or settings.default_model_id
     api_path = f"/v1beta/models/{resolved_model}:generateContent"
@@ -246,8 +245,8 @@ def build_maibao_invocation_plan(request_data: GenerateImageRequest, settings: A
         request_data.aspect_ratio,
         request_data.image_size,
     )
-    return MaibaoInvocationPlan(
-        api_url=_build_endpoint(settings.maibao_api_url, api_path),
+    return GeminiInvocationPlan(
+        api_url=_build_endpoint(settings.api_base_url, api_path),
         api_path=api_path,
         model=resolved_model,
         prompt=request_data.prompt,
@@ -256,9 +255,9 @@ def build_maibao_invocation_plan(request_data: GenerateImageRequest, settings: A
     )
 
 
-def invoke_maibao(invocation_plan: MaibaoInvocationPlan, api_key: str, timeout: int = 300) -> MaibaoRawResponse:
+def invoke_gemini(invocation_plan: GeminiInvocationPlan, api_key: str, timeout: int = 300) -> GeminiRawResponse:
     if not api_key:
-        raise RuntimeError("Missing Maibao API key. Pass Authorization: Bearer <key> in request headers.")
+        raise RuntimeError("Missing API key. Pass Authorization: Bearer <key> in request headers.")
 
     request_body = json.dumps(invocation_plan.request_body).encode("utf-8")
     normalized_endpoint = invocation_plan.api_url.removeprefix("https://")
@@ -268,7 +267,7 @@ def invoke_maibao(invocation_plan: MaibaoInvocationPlan, api_key: str, timeout: 
     start_time = time.perf_counter()
 
     logger.debug(
-        "maibao.backend.maibao.request.start: %s",
+        "gemini.backend.request.start: %s",
         {
             "apiUrl": invocation_plan.api_url,
             "host": host,
@@ -299,7 +298,7 @@ def invoke_maibao(invocation_plan: MaibaoInvocationPlan, api_key: str, timeout: 
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
         logger.info(
-            "maibao.backend.maibao.generation_time: %s",
+            "gemini.backend.generation_time: %s",
             {
                 "model": invocation_plan.model,
                 "status": response.status,
@@ -308,7 +307,7 @@ def invoke_maibao(invocation_plan: MaibaoInvocationPlan, api_key: str, timeout: 
         )
 
         logger.debug(
-            "maibao.backend.maibao.response.received: %s",
+            "gemini.backend.response.received: %s",
             {
                 "status": response.status,
                 "contentType": response.getheader("content-type", ""),
@@ -321,16 +320,16 @@ def invoke_maibao(invocation_plan: MaibaoInvocationPlan, api_key: str, timeout: 
         if response.status >= 400:
             error_body = response_body.decode("utf-8", errors="ignore")
             logger.debug(
-                "maibao.backend.maibao.request.http_error: %s",
+                "gemini.backend.request.http_error: %s",
                 {
                     "status": response.status,
                     "elapsedMs": elapsed_ms,
                     "bodyPreview": error_body[:1000],
                 },
             )
-            raise RuntimeError(f"Maibao HTTP {response.status}: {error_body[:4000]}")
+            raise RuntimeError(f"Gemini HTTP {response.status}: {error_body[:4000]}")
 
-        return MaibaoRawResponse(
+        return GeminiRawResponse(
             status_code=response.status,
             content_type=response.getheader("content-type", ""),
             content_disposition=response.getheader("content-disposition", ""),
@@ -339,7 +338,7 @@ def invoke_maibao(invocation_plan: MaibaoInvocationPlan, api_key: str, timeout: 
     except TimeoutError as exc:
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
         logger.debug(
-            "maibao.backend.maibao.request.timeout: %s",
+            "gemini.backend.request.timeout: %s",
             {
                 "apiUrl": invocation_plan.api_url,
                 "model": invocation_plan.model,
@@ -349,11 +348,11 @@ def invoke_maibao(invocation_plan: MaibaoInvocationPlan, api_key: str, timeout: 
             },
             exc_info=True,
         )
-        raise RuntimeError(f"Maibao request timeout after {elapsed_ms}ms")
+        raise RuntimeError(f"Gemini request timeout after {elapsed_ms}ms")
     except http.client.HTTPException as exc:
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
         logger.debug(
-            "maibao.backend.maibao.request.http_exception: %s",
+            "gemini.backend.request.http_exception: %s",
             {
                 "apiUrl": invocation_plan.api_url,
                 "model": invocation_plan.model,
@@ -364,11 +363,11 @@ def invoke_maibao(invocation_plan: MaibaoInvocationPlan, api_key: str, timeout: 
             },
             exc_info=True,
         )
-        raise RuntimeError(f"Maibao request failed: {exc}")
+        raise RuntimeError(f"Gemini request failed: {exc}")
     except Exception as exc:
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
         logger.debug(
-            "maibao.backend.maibao.request.unexpected_exception: %s",
+            "gemini.backend.request.unexpected_exception: %s",
             {
                 "apiUrl": invocation_plan.api_url,
                 "model": invocation_plan.model,

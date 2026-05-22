@@ -101,7 +101,7 @@ def verify_base_request(base_signature: str, pack_id: str) -> BaseSignaturePaylo
         raise RequestAuthError("baseSignature expired")
 
     logger.debug(
-        "maibao.backend.auth.verify.success: %s",
+        "gemini.backend.auth.verify.success: %s",
         {
             "source": payload.source,
             "version": payload.version,

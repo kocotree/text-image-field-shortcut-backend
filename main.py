@@ -44,18 +44,9 @@ def build_json_response(
     return jsonify(payload), status_code
 
 
-def resolve_maibao_api_key(flask_request) -> tuple[str, str]:
-    authorization = flask_request.headers.get("Authorization", "").strip()
-    if authorization.lower().startswith("bearer "):
-        return authorization[7:].strip(), "authorization-bearer"
-
-    return "", "missing"
-
-
 def _build_request_log_summary(flask_request) -> dict[str, Any]:
     base_signature = flask_request.headers.get("X-Base-Signature", "").strip()
     pack_id = flask_request.headers.get("X-Pack-Id", "").strip()
-    authorization = flask_request.headers.get("Authorization", "").strip()
 
     return {
         "method": flask_request.method,
@@ -64,7 +55,6 @@ def _build_request_log_summary(flask_request) -> dict[str, Any]:
         "hasBaseSignature": bool(base_signature),
         "baseSignatureLength": len(base_signature),
         "packId": pack_id,
-        "hasAuthorization": bool(authorization),
         "fileFieldCount": len(flask_request.files),
     }
 
@@ -112,7 +102,7 @@ def create_app() -> Flask:
             success=True,
             message="Flask backend service is running.",
             data={
-                "service": "maibao-field-shortcut-backend",
+                "service": "text-image-field-shortcut-backend",
                 "version": "runtime",
                 "routes": ["/health", "/api/process-image"],
             },
@@ -134,28 +124,19 @@ def create_app() -> Flask:
         try:
             normalized_request = parse_generate_image_request(request)
             logger.info(
-                "maibao.backend.request.input: %s",
+                "gemini.backend.request.input: %s",
                 {
                     **_build_request_log_summary(request),
                     **_build_parsed_request_summary(normalized_request),
                 },
             )
-            verified_payload = verify_base_request(
+            verify_base_request(
                 request.headers.get("X-Base-Signature", "").strip(),
                 request.headers.get("X-Pack-Id", "").strip(),
             )
-            api_key, api_key_source = resolve_maibao_api_key(request)
-            logger.debug(
-                "maibao.backend.api_key.resolved: %s",
-                {
-                    "source": api_key_source,
-                    "present": bool(api_key),
-                    "packId": verified_payload.pack_id,
-                },
-            )
-            result = process_image_request(normalized_request, api_key)
+            result = process_image_request(normalized_request)
             logger.info(
-                "maibao.backend.request.result: %s",
+                "gemini.backend.request.result: %s",
                 _build_result_log_summary(
                     success=True,
                     status_code=HTTPStatus.OK,
@@ -172,7 +153,7 @@ def create_app() -> Flask:
             )
         except RequestAuthError as error:
             logger.warning(
-                "maibao.backend.request.result: %s",
+                "gemini.backend.request.result: %s",
                 _build_result_log_summary(
                     success=False,
                     status_code=HTTPStatus.FORBIDDEN,
@@ -188,7 +169,7 @@ def create_app() -> Flask:
             )
         except RequestValidationError as error:
             logger.warning(
-                "maibao.backend.request.result: %s",
+                "gemini.backend.request.result: %s",
                 _build_result_log_summary(
                     success=False,
                     status_code=HTTPStatus.BAD_REQUEST,
@@ -204,7 +185,7 @@ def create_app() -> Flask:
             )
         except Exception as error:
             logger.error(
-                "maibao.backend.request.result: %s",
+                "gemini.backend.request.result: %s",
                 _build_result_log_summary(
                     success=False,
                     status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -213,7 +194,7 @@ def create_app() -> Flask:
                     error=error,
                 ),
             )
-            logger.debug("maibao.backend.request.exception", exc_info=True)
+            logger.debug("gemini.backend.request.exception", exc_info=True)
             return build_json_response(
                 success=False,
                 message=str(error),

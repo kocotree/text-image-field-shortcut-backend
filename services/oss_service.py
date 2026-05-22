@@ -95,7 +95,7 @@ def upload_asset_to_oss(settings: AppSettings, asset: NormalizedGeneratedAsset) 
     body = _resolve_asset_bytes(asset)
 
     logger.debug(
-        "maibao.backend.oss.upload.start: %s",
+        "gemini.backend.oss.upload.start: %s",
         {
             "bucketName": settings.oss.bucket_name,
             "endpoint": settings.oss.endpoint,
@@ -130,7 +130,7 @@ def upload_asset_to_oss(settings: AppSettings, asset: NormalizedGeneratedAsset) 
     )
 
     logger.info(
-        "maibao.backend.oss.upload.success: %s",
+        "gemini.backend.oss.upload.success: %s",
         {
             "bucketName": upload_result.bucket_name,
             "objectKey": upload_result.object_key,
