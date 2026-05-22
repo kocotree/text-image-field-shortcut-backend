@@ -1,5 +1,7 @@
 FROM python:3.14-slim
 
+ENV TZ=Asia/Shanghai
+
 RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ uv
 
 WORKDIR /app
