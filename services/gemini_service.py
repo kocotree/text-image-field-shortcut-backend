@@ -266,17 +266,12 @@ def invoke_gemini(invocation_plan: GeminiInvocationPlan, api_key: str, timeout: 
     connection = http.client.HTTPSConnection(host, timeout=timeout)
     start_time = time.perf_counter()
 
-    logger.debug(
+    logger.info(
         "gemini.backend.request.start: %s",
         {
             "apiUrl": invocation_plan.api_url,
             "host": host,
             "path": request_path,
-            "model": invocation_plan.model,
-            "timeout": timeout,
-            "promptLength": len(invocation_plan.prompt or ""),
-            "preparedInputCount": len(invocation_plan.prepared_inputs),
-            "preparedInputs": [item.to_dict() for item in invocation_plan.prepared_inputs],
             "hasApiKey": bool(api_key),
             "requestBodySize": len(request_body),
         },
@@ -366,10 +361,11 @@ def invoke_gemini(invocation_plan: GeminiInvocationPlan, api_key: str, timeout: 
         raise RuntimeError(f"Gemini request failed: {exc}")
     except Exception as exc:
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
-        logger.debug(
+        logger.error(
             "gemini.backend.request.unexpected_exception: %s",
             {
                 "apiUrl": invocation_plan.api_url,
+                "host": host,
                 "model": invocation_plan.model,
                 "timeout": timeout,
                 "elapsedMs": elapsed_ms,
@@ -378,6 +374,6 @@ def invoke_gemini(invocation_plan: GeminiInvocationPlan, api_key: str, timeout: 
             },
             exc_info=True,
         )
-        raise
+        raise RuntimeError(f"Gemini request to {invocation_plan.api_url} failed: {exc}") from exc
     finally:
         connection.close()

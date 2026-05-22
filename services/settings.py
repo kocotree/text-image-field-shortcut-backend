@@ -39,7 +39,7 @@ def get_app_settings() -> AppSettings:
 
     return AppSettings(
         api_base_url=os.getenv("DEFAULT_API_URL", "https://easyrouter.io").strip(),
-        api_key=os.getenv("API_KEY", "").strip(),
+        api_key=os.getenv("DEFAULT_API_KEY", "").strip(),
         nano_banana_2_model_id=os.getenv("NANO_BANANA_2_MODEL_ID", "").strip(),
         nano_banana_pro_model_id=os.getenv("NANO_BANANA_PRO_MODEL_ID", "").strip(),
         oss=OssSettings(
