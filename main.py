@@ -6,9 +6,11 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 from typing import Any
 
-from flask import Flask, jsonify, request
+from io import BytesIO
 
-from services.image_pipeline import process_image_request
+from flask import Flask, jsonify, request, send_file
+
+from services.image_pipeline import generate_image_only, process_image_request
 from services.request_auth import RequestAuthError, verify_base_request
 from services.request_parser import RequestValidationError, parse_generate_image_request
 
@@ -104,7 +106,7 @@ def create_app() -> Flask:
             data={
                 "service": "text-image-field-shortcut-backend",
                 "version": "runtime",
-                "routes": ["/health", "/api/process-image"],
+                "routes": ["/health", "/api/process-image", "/api/generate-image"],
             },
         )
 
@@ -195,6 +197,50 @@ def create_app() -> Flask:
                 ),
             )
             logger.debug("gemini.backend.request.exception", exc_info=True)
+            return build_json_response(
+                success=False,
+                message=str(error),
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+    @app.post("/api/generate-image")
+    def generate_image_file():
+        normalized_request = None
+        try:
+            normalized_request = parse_generate_image_request(request)
+            logger.info(
+                "gemini.backend.generate.input: %s",
+                {
+                    **_build_request_log_summary(request),
+                    **_build_parsed_request_summary(normalized_request),
+                },
+            )
+            image_file = generate_image_only(normalized_request)
+            logger.info(
+                "gemini.backend.generate.result: %s",
+                {
+                    "success": True,
+                    "requestId": normalized_request.request_id,
+                    "mimeType": image_file.mime_type,
+                    "fileName": image_file.file_name,
+                    "size": len(image_file.data),
+                },
+            )
+            return send_file(
+                BytesIO(image_file.data),
+                mimetype=image_file.mime_type,
+                download_name=image_file.file_name,
+            )
+        except RequestValidationError as error:
+            logger.warning("gemini.backend.generate.validation_error: %s", str(error))
+            return build_json_response(
+                success=False,
+                message=str(error),
+                status_code=HTTPStatus.BAD_REQUEST,
+            )
+        except Exception as error:
+            logger.error("gemini.backend.generate.error: %s", str(error))
+            logger.debug("gemini.backend.generate.exception", exc_info=True)
             return build_json_response(
                 success=False,
                 message=str(error),
