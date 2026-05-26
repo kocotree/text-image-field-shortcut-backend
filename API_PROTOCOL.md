@@ -1,7 +1,8 @@
 ﻿# API Protocol
 
-统一入口：
-- `POST /api/process-image`
+入口：
+- `POST /api/process-image` — 生成图片并上传 OSS，返回 OSS URL
+- `POST /api/generate-image` — 生成图片，直接返回图片二进制文件
 
 当前约束：
 - backend 只保留 Gemini 链路
@@ -128,6 +129,12 @@
 
 ## 返回格式
 
+两个接口的请求参数完全一致，区别在于返回方式。
+
+### `POST /api/process-image`
+
+生成图片后上传到 OSS，返回 JSON：
+
 ```json
 {
   "success": true,
@@ -141,5 +148,24 @@
       "https://your-bucket.oss-cn-hangzhou.aliyuncs.com/path/to/file-1.png"
     ]
   }
+}
+```
+
+### `POST /api/generate-image`
+
+生成图片后直接返回图片二进制文件（不经过 OSS），无需鉴权头。
+
+- 响应 `Content-Type`：图片的 MIME 类型（如 `image/png`）
+- 响应 `Content-Disposition`：附带文件名
+- 响应体：图片二进制数据
+
+成功时直接返回图片文件流；失败时返回 JSON 错误信息：
+
+```json
+{
+  "success": false,
+  "message": "错误描述",
+  "timestamp": "2026-04-23T00:00:00+00:00",
+  "data": {}
 }
 ```

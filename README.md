@@ -4,8 +4,8 @@
 
 1. 接收字段捷径请求
 2. 调用 Gemini 模型生成图片
-3. 上传图片到 OSS
-4. 返回 OSS URL 给字段捷径
+3. 上传图片到 OSS，返回 OSS URL（`/api/process-image`）
+4. 或直接返回图片文件（`/api/generate-image`）
 
 当前已接入：
 - HTTP 接口骨架
@@ -13,6 +13,7 @@
 - Gemini-only 请求规划
 - 真实 Gemini API 调用
 - 真实 OSS 上传
+- 直接返回图片文件（无需 OSS）
 
 ## 配置
 
@@ -59,13 +60,15 @@ docker compose up --build
 Invoke-WebRequest http://127.0.0.1:5000/health
 ```
 
-### 图片处理接口
+### 图片处理接口（返回 OSS URL）
 
 ```powershell
 $body = @{
   requestId = "req-001"
   prompt = "生成一张极简风格的海报"
   model = "gemini-3.1-flash-image-preview"
+  aspectRatio = "16:9"
+  imageSize = "2K"
   fileUrls = @(
     "https://example.com/reference-1.png"
   )
@@ -76,4 +79,22 @@ Invoke-RestMethod `
   -Uri http://127.0.0.1:5000/api/process-image `
   -ContentType "application/json" `
   -Body $body
+```
+
+### 图片生成接口（直接返回图片文件）
+
+```powershell
+$body = @{
+  prompt = "a cute cat"
+  model = "gemini-3.1-flash-image-preview"
+  aspectRatio = "1:1"
+  imageSize = "1K"
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:5000/api/generate-image `
+  -ContentType "application/json" `
+  -Body $body `
+  -OutFile "output.png"
 ```
