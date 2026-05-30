@@ -3,15 +3,15 @@
 一个 Flask backend，用于承接字段捷径后的处理链路：
 
 1. 接收字段捷径请求
-2. 调用 Gemini 模型生成图片
+2. 根据 model 自动路由至 Gemini 或 GPT Image 生成图片
 3. 上传图片到 OSS，返回 OSS URL（`/api/process-image`）
 4. 或直接返回图片文件（`/api/generate-image`）
 
 当前已接入：
 - HTTP 接口骨架
 - JSON / multipart 两种输入解析
-- Gemini-only 请求规划
-- 真实 Gemini API 调用
+- Gemini 生图（支持参考图）
+- GPT Image 2 生图（size/quality/moderation）
 - 真实 OSS 上传
 - 直接返回图片文件（无需 OSS）
 
@@ -22,8 +22,9 @@
 常用变量：
 - `DEFAULT_API_URL`
 - `API_KEY`
-- `NANO_BANANA_2_MODEL_ID`
-- `NANO_BANANA_PRO_MODEL_ID`
+- `NANO_BANANA_2_MODEL_ID`（Gemini 模型）
+- `NANO_BANANA_PRO_MODEL_ID`（Gemini 模型）
+- `GPT_IMAGE_MODEL_ID`（默认 `gpt-image-2`）
 - `OSS_ENDPOINT`
 - `OSS_BUCKET_NAME`
 - `OSS_BUCKET_FOLDER_PREFIX`
@@ -83,12 +84,29 @@ Invoke-RestMethod `
 
 ### 图片生成接口（直接返回图片文件）
 
+Gemini：
 ```powershell
 $body = @{
   prompt = "a cute cat"
   model = "gemini-3.1-flash-image-preview"
   aspectRatio = "1:1"
   imageSize = "1K"
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:5000/api/generate-image `
+  -ContentType "application/json" `
+  -Body $body `
+  -OutFile "output.png"
+```
+
+GPT Image 2：
+```powershell
+$body = @{
+  prompt = "a cute cat"
+  model = "gpt-image-2"
+  aspectRatio = "1:1"
 } | ConvertTo-Json
 
 Invoke-RestMethod `
