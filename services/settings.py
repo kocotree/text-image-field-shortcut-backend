@@ -27,6 +27,7 @@ class AppSettings:
     api_key: str
     nano_banana_2_model_id: str
     nano_banana_pro_model_id: str
+    gpt_image_model_id: str
     oss: OssSettings
 
     @property
@@ -42,6 +43,7 @@ def get_app_settings() -> AppSettings:
         api_key=os.getenv("DEFAULT_API_KEY", "").strip(),
         nano_banana_2_model_id=os.getenv("NANO_BANANA_2_MODEL_ID", "").strip(),
         nano_banana_pro_model_id=os.getenv("NANO_BANANA_PRO_MODEL_ID", "").strip(),
+        gpt_image_model_id=os.getenv("GPT_IMAGE_MODEL_ID", "gpt-image-2").strip(),
         oss=OssSettings(
             endpoint=oss_endpoint,
             region=endpoint_to_region(oss_endpoint),
