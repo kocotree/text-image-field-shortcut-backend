@@ -6,12 +6,14 @@
 2. 根据 model 自动路由至 Gemini 或 GPT Image 生成图片
 3. 上传图片到 OSS，返回 OSS URL（`/api/process-image`）
 4. 或直接返回图片文件（`/api/generate-image`）
+5. 图片理解：接收图片，调用 Gemini 返回文本描述（`/api/understand-image`）
 
 当前已接入：
 - HTTP 接口骨架
 - JSON / multipart 两种输入解析
 - Gemini 生图（支持参考图）
 - GPT Image 2 生图（size/quality/moderation）
+- Gemini 图片理解（图片→文本）
 - 真实 OSS 上传
 - 直接返回图片文件（无需 OSS）
 
@@ -115,4 +117,23 @@ Invoke-RestMethod `
   -ContentType "application/json" `
   -Body $body `
   -OutFile "output.png"
+```
+
+### 图片理解接口（返回文本）
+
+```powershell
+$body = @{
+  requestId = "req-001"
+  prompt = "描述这张图片的内容"
+  model = "gemini-2.5-flash-image"
+  fileUrls = @(
+    "https://example.com/photo.png"
+  )
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:5000/api/understand-image `
+  -ContentType "application/json" `
+  -Body $body
 ```

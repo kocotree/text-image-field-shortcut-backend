@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib import parse, request
 
-from services.request_parser import GenerateImageRequest
+from services.request_parser import GenerateImageRequest, UnderstandImageRequest
 from services.settings import AppSettings
 
 logger = logging.getLogger(__name__)
@@ -207,6 +207,10 @@ def _prepare_reference_inputs(request_data: GenerateImageRequest) -> list[Prepar
     return prepared_inputs
 
 
+def _prepare_url_reference_inputs(file_urls: list[str]) -> list[PreparedReferenceInput]:
+    return [_read_url_as_inline_input(file_url) for file_url in file_urls]
+
+
 def _build_gemini_request_body(
     prompt: str,
     prepared_inputs: list[PreparedReferenceInput],
@@ -244,6 +248,45 @@ def build_gemini_invocation_plan(request_data: GenerateImageRequest, settings: A
         prepared_inputs,
         request_data.aspect_ratio,
         request_data.image_size,
+    )
+    return GeminiInvocationPlan(
+        api_url=_build_endpoint(settings.api_base_url, api_path),
+        api_path=api_path,
+        model=resolved_model,
+        prompt=request_data.prompt,
+        prepared_inputs=prepared_inputs,
+        request_body=request_body,
+    )
+
+
+def _build_gemini_text_request_body(
+    prompt: str,
+    prepared_inputs: list[PreparedReferenceInput],
+) -> dict[str, Any]:
+    parts: list[dict[str, Any]] = []
+    parts.extend(_build_inline_data_part(item.payload, item.mime_type) for item in prepared_inputs)
+    if prompt:
+        parts.append({"text": prompt})
+    return {
+        "contents": [
+            {
+                "role": "user",
+                "parts": parts,
+            }
+        ],
+    }
+
+
+NANO_BANANA_MODEL = "gemini-2.5-flash-image"
+
+
+def build_gemini_understand_plan(request_data: UnderstandImageRequest, settings: AppSettings) -> GeminiInvocationPlan:
+    prepared_inputs = _prepare_url_reference_inputs(request_data.file_urls)
+    resolved_model = request_data.model or NANO_BANANA_MODEL
+    api_path = f"/v1beta/models/{resolved_model}:generateContent"
+    request_body = _build_gemini_text_request_body(
+        request_data.prompt,
+        prepared_inputs,
     )
     return GeminiInvocationPlan(
         api_url=_build_endpoint(settings.api_base_url, api_path),

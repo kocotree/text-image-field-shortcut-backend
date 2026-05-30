@@ -11,8 +11,9 @@ from io import BytesIO
 from flask import Flask, jsonify, request, send_file
 
 from services.image_pipeline import generate_image_only, process_image_request
+from services.understand_pipeline import process_understand_request
 from services.request_auth import RequestAuthError, verify_base_request
-from services.request_parser import RequestValidationError, parse_generate_image_request
+from services.request_parser import RequestValidationError, parse_generate_image_request, parse_understand_image_request
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +107,7 @@ def create_app() -> Flask:
             data={
                 "service": "text-image-field-shortcut-backend",
                 "version": "runtime",
-                "routes": ["/health", "/api/process-image", "/api/generate-image"],
+                "routes": ["/health", "/api/process-image", "/api/generate-image", "/api/understand-image"],
             },
         )
 
@@ -241,6 +242,88 @@ def create_app() -> Flask:
         except Exception as error:
             logger.error("gemini.backend.generate.error: %s", str(error))
             logger.debug("gemini.backend.generate.exception", exc_info=True)
+            return build_json_response(
+                success=False,
+                message=str(error),
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+    @app.post("/api/understand-image")
+    def understand_image():
+        normalized_request = None
+        try:
+            normalized_request = parse_understand_image_request(request)
+            logger.info(
+                "understand.backend.request.input: %s",
+                {
+                    **_build_request_log_summary(request),
+                    "requestId": normalized_request.request_id,
+                    "promptLength": len(normalized_request.prompt or ""),
+                    "model": normalized_request.model,
+                    "fileUrlCount": len(normalized_request.file_urls),
+                },
+            )
+            verify_base_request(
+                request.headers.get("X-Base-Signature", "").strip(),
+                request.headers.get("X-Pack-Id", "").strip(),
+            )
+            result = process_understand_request(normalized_request)
+            logger.info(
+                "understand.backend.request.result: %s",
+                {
+                    "success": True,
+                    "requestId": normalized_request.request_id,
+                    "model": normalized_request.model,
+                    "textLength": len(result.get("text", "")),
+                },
+            )
+            return build_json_response(
+                success=True,
+                message="Image understanding completed successfully.",
+                data=result,
+                status_code=HTTPStatus.OK,
+            )
+        except RequestAuthError as error:
+            logger.warning(
+                "understand.backend.request.result: %s",
+                {
+                    "success": False,
+                    "statusCode": int(HTTPStatus.FORBIDDEN),
+                    "message": str(error),
+                    "requestId": getattr(normalized_request, "request_id", ""),
+                },
+            )
+            return build_json_response(
+                success=False,
+                message=str(error),
+                status_code=HTTPStatus.FORBIDDEN,
+            )
+        except RequestValidationError as error:
+            logger.warning(
+                "understand.backend.request.result: %s",
+                {
+                    "success": False,
+                    "statusCode": int(HTTPStatus.BAD_REQUEST),
+                    "message": str(error),
+                    "requestId": getattr(normalized_request, "request_id", ""),
+                },
+            )
+            return build_json_response(
+                success=False,
+                message=str(error),
+                status_code=HTTPStatus.BAD_REQUEST,
+            )
+        except Exception as error:
+            logger.error(
+                "understand.backend.request.result: %s",
+                {
+                    "success": False,
+                    "statusCode": int(HTTPStatus.INTERNAL_SERVER_ERROR),
+                    "message": str(error),
+                    "requestId": getattr(normalized_request, "request_id", ""),
+                },
+            )
+            logger.debug("understand.backend.request.exception", exc_info=True)
             return build_json_response(
                 success=False,
                 message=str(error),

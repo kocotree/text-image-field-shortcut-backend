@@ -197,3 +197,46 @@ def parse_generate_image_request(flask_request: Any) -> GenerateImageRequest:
     )
 
     return parsed_request
+
+
+@dataclass
+class UnderstandImageRequest:
+    request_id: str
+    prompt: str
+    model: str
+    file_urls: list[str]
+    raw_payload: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "requestId": self.request_id,
+            "prompt": self.prompt,
+            "model": self.model,
+            "fileUrlCount": len(self.file_urls),
+            "receivedFileUrls": self.file_urls,
+        }
+
+
+def parse_understand_image_request(flask_request: Any) -> UnderstandImageRequest:
+    payload = flask_request.get_json(silent=True) or {}
+
+    file_urls = _normalize_url_values(payload.get("fileUrl"), payload.get("fileUrls"))
+    if len(file_urls) > MAX_REFERENCE_IMAGE_COUNT:
+        raise RequestValidationError(
+            f"Too many reference images: {len(file_urls)}. The current limit is {MAX_REFERENCE_IMAGE_COUNT}."
+        )
+
+    parsed_request = UnderstandImageRequest(
+        request_id=_stringify(payload.get("requestId")),
+        prompt=_stringify(payload.get("prompt")),
+        model=_stringify(payload.get("model")),
+        file_urls=file_urls,
+        raw_payload=payload,
+    )
+
+    logger.debug(
+        "understand.backend.request_parser.parsed: %s",
+        parsed_request.to_dict(),
+    )
+
+    return parsed_request

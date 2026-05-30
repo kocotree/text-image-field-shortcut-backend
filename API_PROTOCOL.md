@@ -3,6 +3,7 @@
 入口：
 - `POST /api/process-image` — 生成图片并上传 OSS，返回 OSS URL
 - `POST /api/generate-image` — 生成图片，直接返回图片二进制文件
+- `POST /api/understand-image` — 图片理解，接收图片返回文本描述
 
 当前约束：
 - backend 支持两条链路：Gemini 和 GPT Image
@@ -190,3 +191,49 @@ GPT Image 2 示例：
   "data": {}
 }
 ```
+
+### `POST /api/understand-image`
+
+图片理解：接收图片 URL，调用 Gemini 返回文本描述。
+
+请求体（仅 JSON）：
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `requestId` | string | 否 | `""` | 请求追踪 ID |
+| `prompt` | string | 否 | `""` | 理解提示词，如"描述图片内容" |
+| `model` | string | 否 | `gemini-2.5-flash-image` | 模型名称 |
+| `fileUrl` | string | 否 | - | 单个图片 URL |
+| `fileUrls` | string[] | 否 | - | 多个图片 URL |
+
+请求示例：
+```json
+{
+  "requestId": "req-001",
+  "prompt": "描述这张图片的内容",
+  "model": "gemini-2.5-flash-image",
+  "fileUrls": [
+    "https://example.com/photo.png"
+  ]
+}
+```
+
+返回示例：
+```json
+{
+  "success": true,
+  "message": "Image understanding completed successfully.",
+  "timestamp": "2026-05-30T00:00:00+00:00",
+  "data": {
+    "requestId": "req-001",
+    "model": "gemini-2.5-flash-image",
+    "text": "这是一张风景照片，画面中..."
+  }
+}
+```
+
+说明：
+- 仅支持 JSON 请求（不支持 multipart/form-data）
+- 不需要 `aspectRatio` / `imageSize` 参数
+- 参考图数量上限为 14
+- 默认走 Gemini 链路，不支持 GPT Image
