@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   text-image-field-shortcut:
     image: text-image-field-shortcut:1.2
@@ -12,4 +10,9 @@ services:
     ports:
       - "5000:5000"
     restart: on-failure
-    network_mode: bridge
+    networks:
+      - kocotree-skills
+
+networks:
+  kocotree-skills:
+    external: true

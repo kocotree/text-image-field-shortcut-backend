@@ -14,6 +14,7 @@ from services.image_pipeline import generate_image_only, process_image_request
 from services.understand_pipeline import process_understand_request
 from services.request_auth import RequestAuthError, verify_base_request
 from services.request_parser import RequestValidationError, parse_generate_image_request, parse_understand_image_request
+from services.kocotree_skills_auth import require_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,7 @@ def create_app() -> Flask:
         )
 
     @app.post("/api/process-image")
-    def generate_image():
+    def process_image():
         normalized_request = None
         try:
             normalized_request = parse_generate_image_request(request)
@@ -205,7 +206,8 @@ def create_app() -> Flask:
             )
 
     @app.post("/api/generate-image")
-    def generate_image_file():
+    @require_api_key
+    def generate_image():
         normalized_request = None
         try:
             normalized_request = parse_generate_image_request(request)

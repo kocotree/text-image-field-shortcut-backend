@@ -15,3 +15,5 @@ wheels/
 .tmp/
 .scripts
 .claude/
+
+.codegraph/
