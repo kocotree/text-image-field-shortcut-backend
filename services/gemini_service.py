@@ -233,7 +233,7 @@ def _build_gemini_request_body(
             }
         ],
         "generationConfig": {
-            "responseModalities": ["IMAGE"],
+            "responseModalities": ["TEXT", "IMAGE"],
             "imageConfig": image_config,
         },
     }
