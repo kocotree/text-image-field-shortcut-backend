@@ -1,18 +1,28 @@
 services:
-  text-image-field-shortcut:
-    image: text-image-field-shortcut:1.2
-    container_name: text-image-field-shortcut
-    build:
-      context: .
-      dockerfile: Dockerfile
+  text-image-field-shortcut-backend:
+    image: ghcr.io/kocotree/text-image-field-shortcut-backend:latest
+    container_name: text-image-field-shortcut-backend
+    restart: unless-stopped
+    ports:
+      - "${APP_HTTP_PORT:-5000}:5000"
+    expose:
+      - "5000"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik-network
+      traefik.http.routers.text-image-field-shortcut-backend.rule: "Host(`text-image-field-shortcut.skills.kktree.cn`)"
+      traefik.http.routers.text-image-field-shortcut-backend.entrypoints: websecure
+      traefik.http.routers.text-image-field-shortcut-backend.tls: "true"
+      traefik.http.routers.text-image-field-shortcut-backend.tls.certresolver: myresolver
+      traefik.http.services.text-image-field-shortcut-backend.loadbalancer.server.port: 5000
     env_file:
       - .env
-    ports:
-      - "5000:5000"
-    restart: on-failure
     networks:
       - kocotree-skills
+      - traefik-network
 
 networks:
   kocotree-skills:
+    external: true
+  traefik-network:
     external: true

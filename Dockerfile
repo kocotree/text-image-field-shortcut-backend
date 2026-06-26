@@ -3,19 +3,17 @@ FROM python:3.14-slim
 ENV TZ=Asia/Shanghai
 
 RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ uv
+ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 
 WORKDIR /app
 
-COPY pyproject.toml ./
-COPY uv.lock ./
+COPY pyproject.toml uv.lock ./
 
-RUN uv sync --frozen -i https://mirrors.aliyun.com/pypi/simple/
+RUN uv sync --frozen
 
 COPY main.py ./
 COPY gunicorn.py ./
 COPY services ./services
-COPY API_PROTOCOL.md ./
-COPY README.md ./
 
 EXPOSE 5000
 
