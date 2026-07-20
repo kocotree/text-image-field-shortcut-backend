@@ -17,6 +17,35 @@ from services.settings import AppSettings
 logger = logging.getLogger(__name__)
 
 DEFAULT_REFERENCE_FETCH_TIMEOUT = 120
+GEMINI_MODEL_ALIASES = {
+    "gemini-3.1-flash-image-preview": "gemini-3.1-flash-image",
+    "gemini-3-pro-image-preview": "gemini-3-pro-image",
+}
+
+
+def resolve_gemini_model_id(requested_model: str, default_model: str) -> str:
+    """解析 Gemini 模型 ID，并按受控别名表路由旧模型。
+
+    参数：
+        requested_model: 请求中显式传入的模型 ID，为空时使用默认模型。
+        default_model: 服务端配置的默认 Gemini 模型 ID。
+
+    返回值：
+        可直接用于调用 Gemini 接口的正式版模型 ID。
+    """
+    resolved_model = str(requested_model or default_model or "").strip()
+    stable_model = GEMINI_MODEL_ALIASES.get(resolved_model)
+    if not stable_model:
+        return resolved_model
+
+    logger.info(
+        "gemini.backend.model.compatibility_route: %s",
+        {
+            "requestedModel": resolved_model,
+            "resolvedModel": stable_model,
+        },
+    )
+    return stable_model
 
 
 def _guess_mime_type(file_name: str, fallback: str = "application/octet-stream") -> str:
@@ -241,7 +270,7 @@ def _build_gemini_request_body(
 
 def build_gemini_invocation_plan(request_data: GenerateImageRequest, settings: AppSettings) -> GeminiInvocationPlan:
     prepared_inputs = _prepare_reference_inputs(request_data)
-    resolved_model = request_data.model or settings.default_model_id
+    resolved_model = resolve_gemini_model_id(request_data.model, settings.default_model_id)
     api_path = f"/v1beta/models/{resolved_model}:generateContent"
     request_body = _build_gemini_request_body(
         request_data.prompt,
@@ -282,7 +311,7 @@ NANO_BANANA_MODEL = "gemini-2.5-flash-image"
 
 def build_gemini_understand_plan(request_data: UnderstandImageRequest, settings: AppSettings) -> GeminiInvocationPlan:
     prepared_inputs = _prepare_url_reference_inputs(request_data.file_urls)
-    resolved_model = request_data.model or NANO_BANANA_MODEL
+    resolved_model = resolve_gemini_model_id(request_data.model, NANO_BANANA_MODEL)
     api_path = f"/v1beta/models/{resolved_model}:generateContent"
     request_body = _build_gemini_text_request_body(
         request_data.prompt,

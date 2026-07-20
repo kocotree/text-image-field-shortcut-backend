@@ -36,6 +36,7 @@
 
 说明：
 - API Key 从环境变量 `API_KEY` 读取，无需在请求头传入
+- Gemini 正式版使用 `gemini-3.1-flash-image` 和 `gemini-3-pro-image`；旧请求或环境变量中的对应 preview 模型会通过兼容映射路由到正式版
 
 ## Docker
 构建
@@ -69,7 +70,7 @@ Invoke-WebRequest http://127.0.0.1:5000/health
 $body = @{
   requestId = "req-001"
   prompt = "生成一张极简风格的海报"
-  model = "gemini-3.1-flash-image-preview"
+  model = "gemini-3.1-flash-image"
   aspectRatio = "16:9"
   imageSize = "2K"
   fileUrls = @(
@@ -90,7 +91,7 @@ Gemini：
 ```powershell
 $body = @{
   prompt = "a cute cat"
-  model = "gemini-3.1-flash-image-preview"
+  model = "gemini-3.1-flash-image"
   aspectRatio = "1:1"
   imageSize = "1K"
 } | ConvertTo-Json

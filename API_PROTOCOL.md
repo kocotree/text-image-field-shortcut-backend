@@ -9,6 +9,7 @@
 - backend 支持两条链路：Gemini 和 GPT Image
 - 当 `model` 以 `gpt-image` 开头时走 GPT Image 链路，否则走 Gemini 链路
 - Gemini 模型默认从 `.env` 中的 `NANO_BANANA_2_MODEL_ID` / `NANO_BANANA_PRO_MODEL_ID` 读取
+- Gemini 正式版使用 `gemini-3.1-flash-image` 和 `gemini-3-pro-image`；请求参数或环境变量中的对应 preview 模型会通过兼容映射路由到正式版
 - GPT Image 模型默认从 `.env` 中的 `GPT_IMAGE_MODEL_ID` 读取（默认 `gpt-image-2`）
 - API key 从服务端环境变量 `API_KEY` 读取，前端无需传入
 - 请求来源校验依赖两个请求头：`X-Base-Signature` 和 `X-Pack-Id`
@@ -99,7 +100,7 @@ Gemini 示例：
 {
   "requestId": "req-001",
   "prompt": "生成一张极简风格的海报",
-  "model": "gemini-3.1-flash-image-preview",
+  "model": "gemini-3.1-flash-image",
   "aspectRatio": "16:9",
   "imageSize": "2K",
   "fileUrl": "https://example.com/reference-1.png",
