@@ -17,3 +17,4 @@ wheels/
 .claude/
 
 .codegraph/
+.DS_Store
