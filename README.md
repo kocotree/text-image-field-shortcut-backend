@@ -148,7 +148,7 @@ Invoke-RestMethod `
 $body = @{
   requestId = "req-001"
   prompt = "描述这张图片的内容"
-  model = "gemini-2.5-flash-image"
+  model = "gemini-3.1-flash-image"
   fileUrls = @(
     "https://example.com/photo.png"
   )

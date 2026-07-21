@@ -207,7 +207,7 @@ GPT Image 2 示例：
 |---|---|---|---|---|
 | `requestId` | string | 否 | `""` | 请求追踪 ID |
 | `prompt` | string | 否 | `""` | 理解提示词，如"描述图片内容" |
-| `model` | string | 否 | `gemini-2.5-flash-image` | 模型名称 |
+| `model` | string | 否 | `gemini-3.1-flash-image` | 模型名称 |
 | `fileUrl` | string | 否 | - | 单个图片 URL |
 | `fileUrls` | string[] | 否 | - | 多个图片 URL |
 
@@ -216,7 +216,7 @@ GPT Image 2 示例：
 {
   "requestId": "req-001",
   "prompt": "描述这张图片的内容",
-  "model": "gemini-2.5-flash-image",
+  "model": "gemini-3.1-flash-image",
   "fileUrls": [
     "https://example.com/photo.png"
   ]
@@ -231,7 +231,7 @@ GPT Image 2 示例：
   "timestamp": "2026-05-30T00:00:00+00:00",
   "data": {
     "requestId": "req-001",
-    "model": "gemini-2.5-flash-image",
+    "model": "gemini-3.1-flash-image",
     "text": "这是一张风景照片，画面中...",
     "provider": "easyrouter",
     "fallbackUsed": false
