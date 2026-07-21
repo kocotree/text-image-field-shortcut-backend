@@ -127,18 +127,23 @@ class DirectHttpImportTestCase(unittest.TestCase):
         forbidden_imports = {"requests", "http.client", "urllib.request"}
         violations: list[str] = []
 
-        for path in Path("services").rglob("*.py"):
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    imported_names = {alias.name for alias in node.names}
-                elif isinstance(node, ast.ImportFrom):
-                    imported_names = {node.module or ""}
-                else:
-                    continue
-                matched = forbidden_imports.intersection(imported_names)
-                if matched:
-                    violations.append(f"{path}: {', '.join(sorted(matched))}")
+        for source_root in (Path("api"), Path("services")):
+            for path in source_root.rglob("*.py"):
+                tree = ast.parse(
+                    path.read_text(encoding="utf-8"), filename=str(path)
+                )
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        imported_names = {alias.name for alias in node.names}
+                    elif isinstance(node, ast.ImportFrom):
+                        imported_names = {node.module or ""}
+                    else:
+                        continue
+                    matched = forbidden_imports.intersection(imported_names)
+                    if matched:
+                        violations.append(
+                            f"{path}: {', '.join(sorted(matched))}"
+                        )
 
         self.assertEqual(violations, [])
 
