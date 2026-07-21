@@ -11,7 +11,6 @@ from services.domain.provider import (
     ProviderClient,
     TextProviderResult,
 )
-from services.gemini_service import NANO_BANANA_MODEL
 from services.model_registry import ModelRegistry, ModelRegistryError, load_model_registry
 from services.notifications import FeishuAlertNotifier, RoutingEventReporter
 from services.providers.factory import build_provider_clients
@@ -132,7 +131,7 @@ class FailoverRouter:
         返回值：
             包含服务商结果、是否兜底和完整尝试链路的路由结果。
         """
-        public_model = self._registry.resolve(request.model, self._settings.default_model_id)
+        public_model = self._registry.resolve(request.model)
         deadline = time.monotonic() + self._settings.routing.request_deadline_seconds
         attempts: list[RouteAttempt] = []
         errors: list[ProviderError] = []
@@ -177,7 +176,7 @@ class FailoverRouter:
         返回值：
             包含服务商结果、是否兜底和完整尝试链路的路由结果。
         """
-        public_model = self._registry.resolve(request.model, NANO_BANANA_MODEL)
+        public_model = self._registry.resolve(request.model)
         deadline = time.monotonic() + self._settings.routing.request_deadline_seconds
         attempts: list[RouteAttempt] = []
         errors: list[ProviderError] = []

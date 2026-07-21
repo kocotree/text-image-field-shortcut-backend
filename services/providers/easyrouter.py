@@ -22,8 +22,20 @@ class EasyRouterProvider:
 
     name = "easyrouter"
 
-    def __init__(self, settings: AppSettings) -> None:
+    def __init__(self, settings: AppSettings, base_url: str, api_key: str) -> None:
+        """创建 EasyRouter 服务商适配器。
+
+        参数：
+            settings: HTTP 客户端和资源下载等应用配置。
+            base_url: 从服务商配置文件读取的 EasyRouter 地址。
+            api_key: 从服务商指定环境变量读取的访问密钥。
+
+        返回值：
+            无。
+        """
         self._settings = settings
+        self._base_url = base_url.rstrip("/")
+        self._api_key = api_key
 
     def generate_image(
         self,
@@ -46,18 +58,22 @@ class EasyRouterProvider:
         provider_request = replace(request, model=provider_model)
         start_time = time.perf_counter()
         if provider_model.startswith("gpt-image"):
-            plan = build_openai_image_invocation_plan(provider_request, self._settings)
+            plan = build_openai_image_invocation_plan(
+                provider_request, self._base_url
+            )
             raw_response = invoke_openai_image(
                 plan,
-                self._settings.api_key,
+                self._api_key,
                 self._settings.http.provider,
                 timeout_seconds=timeout_seconds,
             )
         else:
-            plan = build_gemini_invocation_plan(provider_request, self._settings)
+            plan = build_gemini_invocation_plan(
+                provider_request, self._settings, self._base_url
+            )
             raw_response = invoke_gemini(
                 plan,
-                self._settings.api_key,
+                self._api_key,
                 self._settings.http.provider,
                 timeout_seconds=timeout_seconds,
             )
@@ -103,10 +119,12 @@ class EasyRouterProvider:
         """
         provider_request = replace(request, model=provider_model)
         start_time = time.perf_counter()
-        plan = build_gemini_understand_plan(provider_request, self._settings)
+        plan = build_gemini_understand_plan(
+            provider_request, self._settings, self._base_url
+        )
         raw_response = invoke_gemini(
             plan,
-            self._settings.api_key,
+            self._api_key,
             self._settings.http.provider,
             timeout_seconds=timeout_seconds,
         )

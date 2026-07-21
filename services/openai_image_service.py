@@ -15,7 +15,7 @@ from services.domain.errors import (
 )
 from services.http import build_request_timeout, get_http_client
 from services.request_parser import GenerateImageRequest, RequestValidationError
-from services.settings import AppSettings, HttpClientSettings
+from services.settings import HttpClientSettings
 
 logger = logging.getLogger(__name__)
 
@@ -83,18 +83,27 @@ class OpenAIImageRawResponse:
 
 
 def build_openai_image_invocation_plan(
-    request_data: GenerateImageRequest, settings: AppSettings
+    request_data: GenerateImageRequest, base_url: str
 ) -> OpenAIImageInvocationPlan:
+    """构建 OpenAI Images 兼容调用计划。
+
+    参数：
+        request_data: 已解析且已映射服务商模型的图片生成请求。
+        base_url: 服务商配置文件中定义的接口地址。
+
+    返回值：
+        包含接口地址、模型、尺寸和请求体的调用计划。
+    """
     if request_data.file_urls or request_data.files:
         raise RequestValidationError(
             "GPT-image models do not support reference images. "
             "Remove fileUrl/fileUrls/files or use a Gemini model."
         )
 
-    resolved_model = request_data.model or settings.gpt_image_model_id
+    resolved_model = request_data.model
     size = _aspect_ratio_to_size(request_data.aspect_ratio)
-    base_url = _normalize_api_url(settings.api_base_url)
-    api_url = f"{base_url}/v1/images/generations"
+    normalized_base_url = _normalize_api_url(base_url)
+    api_url = f"{normalized_base_url}/v1/images/generations"
 
     request_body: dict[str, Any] = {
         "model": resolved_model,

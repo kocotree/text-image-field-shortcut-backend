@@ -123,11 +123,6 @@ class CollectingEventReporter:
 
 def _build_settings(*, fallback_enabled: bool = True) -> AppSettings:
     return AppSettings(
-        api_base_url="https://easyrouter.example",
-        api_key="easy-key",
-        nano_banana_2_model_id="gemini-3.1-flash-image",
-        nano_banana_pro_model_id="gemini-3-pro-image",
-        gpt_image_model_id="gpt-image-2",
         oss=OssSettings(endpoint="", region="", bucket_name="", bucket_prefix=""),
         fallback_enabled=fallback_enabled,
         routing=RoutingSettings(

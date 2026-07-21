@@ -300,9 +300,23 @@ def _build_gemini_request_body(
     }
 
 
-def build_gemini_invocation_plan(request_data: GenerateImageRequest, settings: AppSettings) -> GeminiInvocationPlan:
+def build_gemini_invocation_plan(
+    request_data: GenerateImageRequest,
+    settings: AppSettings,
+    base_url: str,
+) -> GeminiInvocationPlan:
+    """构建 Gemini 图片生成调用计划。
+
+    参数：
+        request_data: 已解析且已映射服务商模型的图片生成请求。
+        settings: HTTP 客户端与资源下载配置。
+        base_url: 服务商配置文件中定义的接口地址。
+
+    返回值：
+        包含接口地址、模型、参考图和请求体的调用计划。
+    """
     prepared_inputs = _prepare_reference_inputs(request_data, build_asset_fetcher(settings))
-    resolved_model = resolve_gemini_model_id(request_data.model, settings.default_model_id)
+    resolved_model = resolve_gemini_model_id(request_data.model, "")
     api_path = f"/v1beta/models/{resolved_model}:generateContent"
     request_body = _build_gemini_request_body(
         request_data.prompt,
@@ -311,7 +325,7 @@ def build_gemini_invocation_plan(request_data: GenerateImageRequest, settings: A
         request_data.image_size,
     )
     return GeminiInvocationPlan(
-        api_url=_build_endpoint(settings.api_base_url, api_path),
+        api_url=_build_endpoint(base_url, api_path),
         api_path=api_path,
         model=resolved_model,
         prompt=request_data.prompt,
@@ -338,19 +352,30 @@ def _build_gemini_text_request_body(
     }
 
 
-NANO_BANANA_MODEL = "gemini-2.5-flash-image"
+def build_gemini_understand_plan(
+    request_data: UnderstandImageRequest,
+    settings: AppSettings,
+    base_url: str,
+) -> GeminiInvocationPlan:
+    """构建 Gemini 图片理解调用计划。
 
+    参数：
+        request_data: 已解析且已映射服务商模型的图片理解请求。
+        settings: HTTP 客户端与资源下载配置。
+        base_url: 服务商配置文件中定义的接口地址。
 
-def build_gemini_understand_plan(request_data: UnderstandImageRequest, settings: AppSettings) -> GeminiInvocationPlan:
+    返回值：
+        包含接口地址、模型、参考图和请求体的调用计划。
+    """
     prepared_inputs = _prepare_url_reference_inputs(request_data.file_urls, build_asset_fetcher(settings))
-    resolved_model = resolve_gemini_model_id(request_data.model, NANO_BANANA_MODEL)
+    resolved_model = resolve_gemini_model_id(request_data.model, "")
     api_path = f"/v1beta/models/{resolved_model}:generateContent"
     request_body = _build_gemini_text_request_body(
         request_data.prompt,
         prepared_inputs,
     )
     return GeminiInvocationPlan(
-        api_url=_build_endpoint(settings.api_base_url, api_path),
+        api_url=_build_endpoint(base_url, api_path),
         api_path=api_path,
         model=resolved_model,
         prompt=request_data.prompt,

@@ -15,7 +15,7 @@ class ModelRegistryError(ValueError):
 class ProviderDefinition:
     name: str
     adapter: str
-    base_url_env: str
+    base_url: str
     api_key_env: str
 
 
@@ -31,6 +31,7 @@ class ModelDefinition:
 class ProviderConfiguration:
     primary_provider: str
     fallback_providers: tuple[str, ...]
+    default_model: str
     providers: dict[str, ProviderDefinition]
     models: dict[str, ModelDefinition]
 
@@ -49,17 +50,18 @@ class ModelRegistry:
                     raise ModelRegistryError(f"模型别名重复：{alias}")
                 self._aliases[alias] = public_model
 
-    def resolve(self, requested_model: str, default_model: str = "") -> str:
+    def resolve(self, requested_model: str) -> str:
         """解析请求模型为公共正式版模型。
 
         参数：
             requested_model: 客户端请求中的模型 ID。
-            default_model: 请求未指定模型时使用的默认模型 ID。
 
         返回值：
             解析后的公共模型 ID；未配置别名的模型保持原值。
         """
-        selected = str(requested_model or default_model or "").strip()
+        selected = str(
+            requested_model or self.configuration.default_model
+        ).strip()
         return self._aliases.get(selected, selected)
 
     def provider_model(self, public_model: str, provider: str) -> str:
@@ -111,8 +113,8 @@ def load_provider_configuration(path: str) -> ProviderConfiguration:
         providers[name] = ProviderDefinition(
             name=name,
             adapter=_require_string(raw_definition.get("adapter"), f"providers.{name}.adapter"),
-            base_url_env=_require_string(
-                raw_definition.get("base_url_env"), f"providers.{name}.base_url_env"
+            base_url=_require_string(
+                raw_definition.get("base_url"), f"providers.{name}.base_url"
             ),
             api_key_env=_require_string(
                 raw_definition.get("api_key_env"), f"providers.{name}.api_key_env"
@@ -149,9 +151,14 @@ def load_provider_configuration(path: str) -> ProviderConfiguration:
     if missing_providers:
         raise ModelRegistryError(f"路由引用了未定义的服务商：{', '.join(sorted(missing_providers))}")
 
+    default_model = _require_string(payload.get("default_model"), "default_model")
+    if default_model not in models:
+        raise ModelRegistryError(f"默认模型未在 models 中定义：{default_model}")
+
     configuration = ProviderConfiguration(
         primary_provider=primary_provider,
         fallback_providers=fallback_providers,
+        default_model=default_model,
         providers=providers,
         models=models,
     )

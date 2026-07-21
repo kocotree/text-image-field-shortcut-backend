@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import replace
 import os
 
 from services.domain.provider import ProviderClient
@@ -26,23 +25,16 @@ def build_provider_clients(
     clients: dict[str, ProviderClient] = {}
     for name, definition in configuration.providers.items():
         if definition.adapter == "easyrouter":
-            provider_settings = replace(
+            clients[name] = EasyRouterProvider(
                 settings,
-                api_base_url=os.getenv(
-                    definition.base_url_env, settings.api_base_url
-                ).strip(),
-                api_key=os.getenv(definition.api_key_env, settings.api_key).strip(),
+                definition.base_url,
+                os.getenv(definition.api_key_env, "").strip(),
             )
-            clients[name] = EasyRouterProvider(provider_settings)
         elif definition.adapter == "openrouter":
             clients[name] = OpenRouterProvider(
                 settings,
-                os.getenv(
-                    definition.base_url_env, settings.openrouter_api_url
-                ).strip(),
-                os.getenv(
-                    definition.api_key_env, settings.openrouter_api_key
-                ).strip(),
+                definition.base_url,
+                os.getenv(definition.api_key_env, "").strip(),
             )
         else:
             raise ValueError(f"不支持的服务商适配器：{definition.adapter}")

@@ -93,25 +93,13 @@ class AlertSettings:
 
 @dataclass
 class AppSettings:
-    api_base_url: str
-    api_key: str
-    nano_banana_2_model_id: str
-    nano_banana_pro_model_id: str
-    gpt_image_model_id: str
     oss: OssSettings
     http: HttpSettings = field(default_factory=HttpSettings)
     provider_config_path: str = "config/providers.json"
     fallback_enabled: bool = False
-    openrouter_api_url: str = "https://openrouter.ai/api/v1"
-    openrouter_api_key: str = ""
     routing: RoutingSettings = field(default_factory=RoutingSettings)
     circuit: CircuitBreakerSettings = field(default_factory=CircuitBreakerSettings)
     alert: AlertSettings = field(default_factory=AlertSettings)
-
-    @property
-    def default_model_id(self) -> str:
-        return self.nano_banana_2_model_id or self.nano_banana_pro_model_id
-
 
 def get_app_settings() -> AppSettings:
     """加载应用配置。
@@ -132,11 +120,6 @@ def get_app_settings() -> AppSettings:
     trust_env = _read_bool("HTTP_TRUST_ENV", False)
 
     settings = AppSettings(
-        api_base_url=os.getenv("DEFAULT_API_URL", "https://easyrouter.io").strip(),
-        api_key=os.getenv("DEFAULT_API_KEY", "").strip(),
-        nano_banana_2_model_id=os.getenv("NANO_BANANA_2_MODEL_ID", "").strip(),
-        nano_banana_pro_model_id=os.getenv("NANO_BANANA_PRO_MODEL_ID", "").strip(),
-        gpt_image_model_id=os.getenv("GPT_IMAGE_MODEL_ID", "gpt-image-2").strip(),
         oss=OssSettings(
             endpoint=oss_endpoint,
             region=endpoint_to_region(oss_endpoint),
@@ -186,10 +169,7 @@ def get_app_settings() -> AppSettings:
             ),
             asset_max_bytes=_read_positive_int("REFERENCE_MAX_BYTES", 52_428_800),
         ),
-        provider_config_path=os.getenv("PROVIDER_CONFIG_PATH", "config/providers.json").strip(),
         fallback_enabled=_read_bool("FALLBACK_ENABLED", False),
-        openrouter_api_url=os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1").strip(),
-        openrouter_api_key=os.getenv("OPENROUTER_API_KEY", "").strip(),
         routing=RoutingSettings(
             request_deadline_seconds=_read_positive_float("MODEL_REQUEST_DEADLINE_SECONDS", 390.0),
             primary_max_attempts=_read_positive_int("PRIMARY_MAX_ATTEMPTS", 1),

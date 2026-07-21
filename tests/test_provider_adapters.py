@@ -15,11 +15,6 @@ from services.settings import AppSettings, OssSettings
 
 def _build_settings() -> AppSettings:
     return AppSettings(
-        api_base_url="https://easyrouter.example",
-        api_key="easy-key",
-        nano_banana_2_model_id="gemini-3.1-flash-image",
-        nano_banana_pro_model_id="gemini-3-pro-image",
-        gpt_image_model_id="gpt-image-2",
         oss=OssSettings(endpoint="", region="", bucket_name="", bucket_prefix=""),
     )
 
@@ -40,6 +35,15 @@ class ModelRegistryTestCase(unittest.TestCase):
             "google/gemini-3.1-flash-image",
         )
 
+    def test_empty_model_uses_configured_default(self) -> None:
+        registry = load_model_registry("config/providers.json")
+
+        self.assertEqual(registry.resolve(""), "gemini-3.1-flash-image")
+        self.assertEqual(
+            registry.configuration.providers["easyrouter"].base_url,
+            "https://easyrouter.io",
+        )
+
     def test_invalid_duplicate_alias_is_rejected(self) -> None:
         config_path = Path("tests/.provider-config-invalid.json")
         config_path.write_text(
@@ -47,10 +51,11 @@ class ModelRegistryTestCase(unittest.TestCase):
                 {
                     "primary_provider": "primary",
                     "fallback_providers": [],
+                    "default_model": "model-a",
                     "providers": {
                         "primary": {
                             "adapter": "easyrouter",
-                            "base_url_env": "URL",
+                            "base_url": "https://provider.example",
                             "api_key_env": "KEY",
                         }
                     },
