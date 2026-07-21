@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from urllib import request as url_request
 
 from services.gemini_service import build_gemini_invocation_plan, invoke_gemini
+from services.http import build_asset_fetcher
 from services.openai_image_service import build_openai_image_invocation_plan, invoke_openai_image
 from services.oss_service import upload_asset_to_oss
 from services.request_parser import GenerateImageRequest
@@ -29,11 +29,11 @@ def _is_openai_image_model(model: str, settings: AppSettings) -> bool:
 def _invoke_and_normalize(request_data: GenerateImageRequest, settings: AppSettings) -> tuple[NormalizedModelResult, str]:
     if _is_openai_image_model(request_data.model, settings):
         plan = build_openai_image_invocation_plan(request_data, settings)
-        raw_response = invoke_openai_image(plan, settings.api_key)
+        raw_response = invoke_openai_image(plan, settings.api_key, settings.http.provider)
         return normalize_gemini_response(raw_response), plan.model
     else:
         plan = build_gemini_invocation_plan(request_data, settings)
-        raw_response = invoke_gemini(plan, settings.api_key)
+        raw_response = invoke_gemini(plan, settings.api_key, settings.http.provider)
         return normalize_gemini_response(raw_response), plan.model
 
 
@@ -67,12 +67,11 @@ class GeneratedImageFile:
     file_name: str
 
 
-def _resolve_asset_bytes(asset: NormalizedGeneratedAsset) -> bytes:
+def _resolve_asset_bytes(asset: NormalizedGeneratedAsset, settings: AppSettings) -> bytes:
     if asset.source_kind == "bytes":
         return asset.payload if isinstance(asset.payload, bytes) else bytes(asset.payload)
     if asset.source_kind == "url":
-        with url_request.urlopen(str(asset.payload), timeout=120) as resp:
-            return resp.read()
+        return build_asset_fetcher(settings).fetch(str(asset.payload)).body
     return str(asset.payload).encode("utf-8")
 
 
@@ -90,7 +89,7 @@ def generate_image_only(request_data: GenerateImageRequest) -> GeneratedImageFil
 
     asset = normalized_result.assets[0]
     return GeneratedImageFile(
-        data=_resolve_asset_bytes(asset),
+        data=_resolve_asset_bytes(asset, settings),
         mime_type=asset.mime_type,
         file_name=asset.file_name,
     )

@@ -16,7 +16,7 @@ def process_understand_request(request_data: UnderstandImageRequest) -> dict[str
 
     logger.info("understand.pipeline.invocation_plan: %s", plan.to_dict())
 
-    raw_response = invoke_gemini(plan, settings.api_key)
+    raw_response = invoke_gemini(plan, settings.api_key, settings.http.provider)
     text = extract_text_from_gemini_response(raw_response)
 
     return {

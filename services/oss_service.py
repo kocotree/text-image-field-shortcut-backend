@@ -5,11 +5,11 @@ from datetime import datetime, timezone
 import logging
 from pathlib import Path
 import re
-from urllib import request
 
 import alibabacloud_oss_v2 as oss
 
 from services.response_normalizer import NormalizedGeneratedAsset
+from services.http import build_asset_fetcher
 from services.settings import AppSettings
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ def _resolve_file_name(asset: NormalizedGeneratedAsset) -> str:
     return build_datetime_file_name(suffix)
 
 
-def _resolve_asset_bytes(asset: NormalizedGeneratedAsset) -> bytes:
+def _resolve_asset_bytes(settings: AppSettings, asset: NormalizedGeneratedAsset) -> bytes:
     if asset.source_kind == "bytes":
         body = asset.payload if isinstance(asset.payload, bytes) else bytes(asset.payload)
         return body
@@ -83,16 +83,14 @@ def _resolve_asset_bytes(asset: NormalizedGeneratedAsset) -> bytes:
         body = str(asset.payload).encode("utf-8")
         return body
     if asset.source_kind == "url":
-        with request.urlopen(str(asset.payload), timeout=120) as response:
-            body = response.read()
-            return body
+        return build_asset_fetcher(settings).fetch(str(asset.payload)).body
     raise RuntimeError(f"Unsupported asset source kind: {asset.source_kind}")
 
 
 def upload_asset_to_oss(settings: AppSettings, asset: NormalizedGeneratedAsset) -> OssUploadResult:
     file_name = _resolve_file_name(asset)
     object_key = build_object_key(settings.oss.bucket_prefix, file_name)
-    body = _resolve_asset_bytes(asset)
+    body = _resolve_asset_bytes(settings, asset)
 
     logger.debug(
         "gemini.backend.oss.upload.start: %s",

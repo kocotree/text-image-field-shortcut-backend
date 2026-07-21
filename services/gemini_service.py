@@ -1,22 +1,22 @@
 from __future__ import annotations
 
 import base64
-import http.client
-import json
 import logging
 import mimetypes
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib import parse, request
+from urllib import parse
 
+import httpx
+
+from services.http import AssetFetcher, build_asset_fetcher, get_http_client
 from services.request_parser import GenerateImageRequest, UnderstandImageRequest
-from services.settings import AppSettings
+from services.settings import AppSettings, HttpClientSettings
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_REFERENCE_FETCH_TIMEOUT = 120
 GEMINI_MODEL_ALIASES = {
     "gemini-3.1-flash-image-preview": "gemini-3.1-flash-image",
     "gemini-3-pro-image-preview": "gemini-3-pro-image",
@@ -193,7 +193,7 @@ def _read_file_as_inline_input(uploaded_file: UploadedFileInfo) -> PreparedRefer
     )
 
 
-def _read_url_as_inline_input(file_url: str, timeout: int = DEFAULT_REFERENCE_FETCH_TIMEOUT) -> PreparedReferenceInput:
+def _read_url_as_inline_input(file_url: str, asset_fetcher: AssetFetcher) -> PreparedReferenceInput:
     decoded_data_url = _decode_data_url(file_url)
     if decoded_data_url:
         mime_type, payload = decoded_data_url
@@ -213,9 +213,9 @@ def _read_url_as_inline_input(file_url: str, timeout: int = DEFAULT_REFERENCE_FE
     fallback_name = Path(url_parts.path).name or "reference"
 
     try:
-        with request.urlopen(request_url, timeout=timeout) as response:
-            payload = response.read()
-            response_mime_type = response.headers.get_content_type()
+        fetched_asset = asset_fetcher.fetch(request_url)
+        payload = fetched_asset.body
+        response_mime_type = fetched_asset.content_type
     except Exception as exc:
         raise RuntimeError(f"Failed to download reference image URL: {request_url}") from exc
 
@@ -230,14 +230,18 @@ def _read_url_as_inline_input(file_url: str, timeout: int = DEFAULT_REFERENCE_FE
     )
 
 
-def _prepare_reference_inputs(request_data: GenerateImageRequest) -> list[PreparedReferenceInput]:
-    prepared_inputs = [_read_url_as_inline_input(file_url) for file_url in request_data.file_urls]
+def _prepare_reference_inputs(
+    request_data: GenerateImageRequest, asset_fetcher: AssetFetcher
+) -> list[PreparedReferenceInput]:
+    prepared_inputs = [_read_url_as_inline_input(file_url, asset_fetcher) for file_url in request_data.file_urls]
     prepared_inputs.extend(_read_file_as_inline_input(uploaded_file) for uploaded_file in request_data.files)
     return prepared_inputs
 
 
-def _prepare_url_reference_inputs(file_urls: list[str]) -> list[PreparedReferenceInput]:
-    return [_read_url_as_inline_input(file_url) for file_url in file_urls]
+def _prepare_url_reference_inputs(
+    file_urls: list[str], asset_fetcher: AssetFetcher
+) -> list[PreparedReferenceInput]:
+    return [_read_url_as_inline_input(file_url, asset_fetcher) for file_url in file_urls]
 
 
 def _build_gemini_request_body(
@@ -269,7 +273,7 @@ def _build_gemini_request_body(
 
 
 def build_gemini_invocation_plan(request_data: GenerateImageRequest, settings: AppSettings) -> GeminiInvocationPlan:
-    prepared_inputs = _prepare_reference_inputs(request_data)
+    prepared_inputs = _prepare_reference_inputs(request_data, build_asset_fetcher(settings))
     resolved_model = resolve_gemini_model_id(request_data.model, settings.default_model_id)
     api_path = f"/v1beta/models/{resolved_model}:generateContent"
     request_body = _build_gemini_request_body(
@@ -310,7 +314,7 @@ NANO_BANANA_MODEL = "gemini-2.5-flash-image"
 
 
 def build_gemini_understand_plan(request_data: UnderstandImageRequest, settings: AppSettings) -> GeminiInvocationPlan:
-    prepared_inputs = _prepare_url_reference_inputs(request_data.file_urls)
+    prepared_inputs = _prepare_url_reference_inputs(request_data.file_urls, build_asset_fetcher(settings))
     resolved_model = resolve_gemini_model_id(request_data.model, NANO_BANANA_MODEL)
     api_path = f"/v1beta/models/{resolved_model}:generateContent"
     request_body = _build_gemini_text_request_body(
@@ -327,48 +331,60 @@ def build_gemini_understand_plan(request_data: UnderstandImageRequest, settings:
     )
 
 
-def invoke_gemini(invocation_plan: GeminiInvocationPlan, api_key: str, timeout: int = 300) -> GeminiRawResponse:
+def invoke_gemini(
+    invocation_plan: GeminiInvocationPlan,
+    api_key: str,
+    client_settings: HttpClientSettings | None = None,
+    client: httpx.Client | None = None,
+) -> GeminiRawResponse:
+    """调用 Gemini 兼容接口。
+
+    参数：
+        invocation_plan: 已完成模型解析和请求体构建的调用计划。
+        api_key: 服务商 API Key。
+        client_settings: 共享客户端使用的超时与连接池配置。
+        client: 测试或特殊场景注入的 HTTPX 客户端。
+
+    返回值：
+        包含响应状态、响应头和原始字节的 Gemini 响应。
+    """
     if not api_key:
         raise RuntimeError("Missing API key. Pass Authorization: Bearer <key> in request headers.")
 
-    request_body = json.dumps(invocation_plan.request_body).encode("utf-8")
-    normalized_endpoint = invocation_plan.api_url.removeprefix("https://")
-    host, _, path = normalized_endpoint.partition("/")
-    request_path = f"/{path}" if path else "/"
-    connection = http.client.HTTPSConnection(host, timeout=timeout)
+    request_body_size = len(str(invocation_plan.request_body).encode("utf-8"))
+    http_client = client or get_http_client(
+        "easyrouter",
+        client_settings or HttpClientSettings(),
+    )
     start_time = time.perf_counter()
 
     logger.info(
         "gemini.backend.request.start: %s",
         {
             "apiUrl": invocation_plan.api_url,
-            "host": host,
-            "path": request_path,
             "hasApiKey": bool(api_key),
-            "requestBodySize": len(request_body),
+            "requestBodySize": request_body_size,
         },
     )
 
     try:
-        connection.request(
-            "POST",
-            request_path,
-            body=request_body,
+        response = http_client.post(
+            invocation_plan.api_url,
+            json=invocation_plan.request_body,
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key}",
                 "Accept": "*/*",
             },
         )
-        response = connection.getresponse()
-        response_body = response.read()
+        response_body = response.content
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
         logger.info(
             "gemini.backend.generation_time: %s",
             {
                 "model": invocation_plan.model,
-                "status": response.status,
+                "status": response.status_code,
                 "elapsedMs": elapsed_ms,
             },
         )
@@ -376,54 +392,52 @@ def invoke_gemini(invocation_plan: GeminiInvocationPlan, api_key: str, timeout: 
         logger.debug(
             "gemini.backend.response.received: %s",
             {
-                "status": response.status,
-                "contentType": response.getheader("content-type", ""),
-                "contentDisposition": response.getheader("content-disposition", ""),
+                "status": response.status_code,
+                "contentType": response.headers.get("content-type", ""),
+                "contentDisposition": response.headers.get("content-disposition", ""),
                 "bodyLength": len(response_body),
                 "elapsedMs": elapsed_ms,
             },
         )
 
-        if response.status >= 400:
+        if response.status_code >= 400:
             error_body = response_body.decode("utf-8", errors="ignore")
             logger.debug(
                 "gemini.backend.request.http_error: %s",
                 {
-                    "status": response.status,
+                    "status": response.status_code,
                     "elapsedMs": elapsed_ms,
                     "bodyPreview": error_body[:1000],
                 },
             )
-            raise RuntimeError(f"Gemini HTTP {response.status}: {error_body[:4000]}")
+            raise RuntimeError(f"Gemini HTTP {response.status_code}: {error_body[:4000]}")
 
         return GeminiRawResponse(
-            status_code=response.status,
-            content_type=response.getheader("content-type", ""),
-            content_disposition=response.getheader("content-disposition", ""),
+            status_code=response.status_code,
+            content_type=response.headers.get("content-type", ""),
+            content_disposition=response.headers.get("content-disposition", ""),
             body=response_body,
         )
-    except TimeoutError as exc:
+    except httpx.TimeoutException as exc:
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
         logger.debug(
             "gemini.backend.request.timeout: %s",
             {
                 "apiUrl": invocation_plan.api_url,
                 "model": invocation_plan.model,
-                "timeout": timeout,
                 "elapsedMs": elapsed_ms,
                 "errorType": type(exc).__name__,
             },
             exc_info=True,
         )
         raise RuntimeError(f"Gemini request timeout after {elapsed_ms}ms")
-    except http.client.HTTPException as exc:
+    except httpx.HTTPError as exc:
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
         logger.debug(
             "gemini.backend.request.http_exception: %s",
             {
                 "apiUrl": invocation_plan.api_url,
                 "model": invocation_plan.model,
-                "timeout": timeout,
                 "elapsedMs": elapsed_ms,
                 "errorType": type(exc).__name__,
                 "error": str(exc),
@@ -437,9 +451,7 @@ def invoke_gemini(invocation_plan: GeminiInvocationPlan, api_key: str, timeout: 
             "gemini.backend.request.unexpected_exception: %s",
             {
                 "apiUrl": invocation_plan.api_url,
-                "host": host,
                 "model": invocation_plan.model,
-                "timeout": timeout,
                 "elapsedMs": elapsed_ms,
                 "errorType": type(exc).__name__,
                 "error": str(exc),
@@ -447,5 +459,3 @@ def invoke_gemini(invocation_plan: GeminiInvocationPlan, api_key: str, timeout: 
             exc_info=True,
         )
         raise RuntimeError(f"Gemini request to {invocation_plan.api_url} failed: {exc}") from exc
-    finally:
-        connection.close()

@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import http.client
-import json
 import logging
 import time
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
+
+from services.http import get_http_client
 from services.request_parser import GenerateImageRequest, RequestValidationError
-from services.settings import AppSettings
+from services.settings import AppSettings, HttpClientSettings
 
 logger = logging.getLogger(__name__)
 
@@ -110,49 +111,59 @@ def build_openai_image_invocation_plan(
 
 
 def invoke_openai_image(
-    invocation_plan: OpenAIImageInvocationPlan, api_key: str, timeout: int = 300
+    invocation_plan: OpenAIImageInvocationPlan,
+    api_key: str,
+    client_settings: HttpClientSettings | None = None,
+    client: httpx.Client | None = None,
 ) -> OpenAIImageRawResponse:
+    """调用 OpenAI Images 兼容接口。
+
+    参数：
+        invocation_plan: 已构建完成的图片生成调用计划。
+        api_key: 服务商 API Key。
+        client_settings: 共享客户端使用的超时与连接池配置。
+        client: 测试或特殊场景注入的 HTTPX 客户端。
+
+    返回值：
+        包含响应状态、响应头和原始字节的接口响应。
+    """
     if not api_key:
         raise RuntimeError("Missing API key.")
 
-    request_body = json.dumps(invocation_plan.request_body).encode("utf-8")
-    normalized_endpoint = invocation_plan.api_url.removeprefix("https://")
-    host, _, path = normalized_endpoint.partition("/")
-    request_path = f"/{path}" if path else "/"
-    connection = http.client.HTTPSConnection(host, timeout=timeout)
+    request_body_size = len(str(invocation_plan.request_body).encode("utf-8"))
+    http_client = client or get_http_client(
+        "easyrouter",
+        client_settings or HttpClientSettings(),
+    )
     start_time = time.perf_counter()
 
     logger.info(
         "openai_image.backend.request.start: %s",
         {
             "apiUrl": invocation_plan.api_url,
-            "host": host,
-            "path": request_path,
             "model": invocation_plan.model,
-            "requestBodySize": len(request_body),
+            "requestBodySize": request_body_size,
         },
     )
 
     try:
-        connection.request(
-            "POST",
-            request_path,
-            body=request_body,
+        response = http_client.post(
+            invocation_plan.api_url,
+            json=invocation_plan.request_body,
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key}",
                 "Accept": "*/*",
             },
         )
-        response = connection.getresponse()
-        response_body = response.read()
+        response_body = response.content
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
         logger.info(
             "openai_image.backend.generation_time: %s",
             {
                 "model": invocation_plan.model,
-                "status": response.status,
+                "status": response.status_code,
                 "elapsedMs": elapsed_ms,
             },
         )
@@ -160,45 +171,44 @@ def invoke_openai_image(
         logger.debug(
             "openai_image.backend.response.received: %s",
             {
-                "status": response.status,
-                "contentType": response.getheader("content-type", ""),
+                "status": response.status_code,
+                "contentType": response.headers.get("content-type", ""),
                 "bodyLength": len(response_body),
                 "elapsedMs": elapsed_ms,
             },
         )
 
-        if response.status >= 400:
+        if response.status_code >= 400:
             error_body = response_body.decode("utf-8", errors="ignore")
             logger.debug(
                 "openai_image.backend.request.http_error: %s",
                 {
-                    "status": response.status,
+                    "status": response.status_code,
                     "elapsedMs": elapsed_ms,
                     "bodyPreview": error_body[:1000],
                 },
             )
-            raise RuntimeError(f"OpenAI Image API HTTP {response.status}: {error_body[:4000]}")
+            raise RuntimeError(f"OpenAI Image API HTTP {response.status_code}: {error_body[:4000]}")
 
         return OpenAIImageRawResponse(
-            status_code=response.status,
-            content_type=response.getheader("content-type", ""),
-            content_disposition=response.getheader("content-disposition", ""),
+            status_code=response.status_code,
+            content_type=response.headers.get("content-type", ""),
+            content_disposition=response.headers.get("content-disposition", ""),
             body=response_body,
         )
-    except TimeoutError as exc:
+    except httpx.TimeoutException as exc:
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
         logger.debug(
             "openai_image.backend.request.timeout: %s",
             {
                 "apiUrl": invocation_plan.api_url,
                 "model": invocation_plan.model,
-                "timeout": timeout,
                 "elapsedMs": elapsed_ms,
             },
             exc_info=True,
         )
         raise RuntimeError(f"OpenAI Image API request timeout after {elapsed_ms}ms")
-    except http.client.HTTPException as exc:
+    except httpx.HTTPError as exc:
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
         logger.debug(
             "openai_image.backend.request.http_exception: %s",
@@ -226,5 +236,3 @@ def invoke_openai_image(
             exc_info=True,
         )
         raise RuntimeError(f"OpenAI Image API request to {invocation_plan.api_url} failed: {exc}") from exc
-    finally:
-        connection.close()
