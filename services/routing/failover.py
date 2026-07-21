@@ -16,6 +16,8 @@ from services.model_registry import ModelRegistry, ModelRegistryError, load_mode
 from services.providers.factory import build_provider_clients
 from services.request_parser import GenerateImageRequest, UnderstandImageRequest
 from services.settings import AppSettings
+from services.routing.circuit_breaker import CircuitBreaker, CircuitOpenError
+from services.state import build_state_store
 
 logger = logging.getLogger(__name__)
 
@@ -69,11 +71,44 @@ class FailoverRouter:
         settings: AppSettings,
         registry: ModelRegistry,
         providers: dict[str, ProviderClient],
+        circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
         self._settings = settings
         self._registry = registry
         self._providers = providers
         self._configuration = registry.configuration
+        self._circuit_breaker = circuit_breaker
+
+    def status(self) -> dict[str, object]:
+        """返回不包含密钥和地址的服务商路由状态。
+
+        返回值：
+            包含功能开关、状态存储可用性和各服务商熔断快照的字典。
+        """
+        capabilities = ("image_generation", "image_understanding")
+        provider_states: dict[str, object] = {}
+        for provider_name in self._configuration.providers:
+            capability_states: dict[str, object] = {}
+            for capability in capabilities:
+                snapshot = (
+                    self._circuit_breaker.snapshot(provider_name, capability)
+                    if self._circuit_breaker
+                    else None
+                )
+                capability_states[capability] = {
+                    "state": snapshot.state if snapshot else "closed",
+                    "failureCount": snapshot.failure_count if snapshot else 0,
+                    "openCount": snapshot.open_count if snapshot else 0,
+                    "openUntil": snapshot.open_until if snapshot else 0.0,
+                }
+            provider_states[provider_name] = capability_states
+        return {
+            "fallbackEnabled": self._settings.fallback_enabled,
+            "stateStoreAvailable": bool(
+                self._circuit_breaker and self._circuit_breaker.state_available
+            ),
+            "providers": provider_states,
+        }
 
     def generate_image(self, request: GenerateImageRequest) -> ImageRouteResult:
         """执行图片生成主备路由。
@@ -200,6 +235,31 @@ class FailoverRouter:
             if provider_index > 0 and not self._registry.supports(public_model, capability):
                 continue
 
+            if self._circuit_breaker:
+                try:
+                    self._circuit_breaker.before_call(provider_name, capability)
+                except CircuitOpenError as error:
+                    errors.append(error)
+                    attempts.append(
+                        RouteAttempt(
+                            provider=provider_name,
+                            provider_model=provider_model,
+                            attempt=0,
+                            success=False,
+                            elapsed_ms=0.0,
+                            error_category=error.category,
+                        )
+                    )
+                    logger.warning(
+                        "provider.route.circuit_skipped: %s",
+                        {
+                            "provider": provider_name,
+                            "capability": capability,
+                            "state": error.state,
+                        },
+                    )
+                    continue
+
             max_attempts = (
                 self._settings.routing.primary_max_attempts
                 if provider_index == 0
@@ -212,6 +272,7 @@ class FailoverRouter:
             )
             maximum_attempts = max_attempts + empty_retries_remaining
             attempt_number = 0
+            provider_error: ProviderError | None = None
             while attempt_number < maximum_attempts:
                 attempt_number += 1
                 remaining_seconds = deadline - time.monotonic()
@@ -221,8 +282,10 @@ class FailoverRouter:
                         category=ErrorCategory.TIMEOUT,
                         message="模型请求超过总时限。",
                         retryable=True,
+                        counts_toward_circuit=False,
                     )
                     errors.append(timeout_error)
+                    provider_error = timeout_error
                     break
                 started_at = time.perf_counter()
                 logger.info(
@@ -249,6 +312,7 @@ class FailoverRouter:
                             retryable=True,
                         )
                         errors.append(empty_error)
+                        provider_error = empty_error
                         attempts.append(
                             RouteAttempt(
                                 provider=provider_name,
@@ -283,10 +347,15 @@ class FailoverRouter:
                             "fallbackUsed": provider_index > 0,
                         },
                     )
+                    if self._circuit_breaker:
+                        self._circuit_breaker.record_success(
+                            provider_name, capability
+                        )
                     return result
                 except ProviderError as error:
                     elapsed_ms = round((time.perf_counter() - started_at) * 1000, 2)
                     errors.append(error)
+                    provider_error = error
                     attempts.append(
                         RouteAttempt(
                             provider=provider_name,
@@ -308,11 +377,20 @@ class FailoverRouter:
                         },
                     )
                     if not error.retryable:
+                        if self._circuit_breaker:
+                            self._circuit_breaker.record_failure(
+                                provider_name, capability, error
+                            )
                         raise
                     if attempt_number < max_attempts:
                         if self._wait_for_retry(error, deadline):
                             continue
                     break
+
+            if provider_error and self._circuit_breaker:
+                self._circuit_breaker.record_failure(
+                    provider_name, capability, provider_error
+                )
 
         if len({error.provider for error in errors}) > 1:
             raise FailoverExhaustedError(tuple(errors))
@@ -359,4 +437,7 @@ def build_failover_router(settings: AppSettings) -> FailoverRouter:
     """
     registry = load_model_registry(settings.provider_config_path)
     providers = dict(build_provider_clients(settings, registry.configuration))
-    return FailoverRouter(settings, registry, providers)
+    circuit_breaker = CircuitBreaker(
+        build_state_store(settings.state), settings.state.circuit
+    )
+    return FailoverRouter(settings, registry, providers, circuit_breaker)

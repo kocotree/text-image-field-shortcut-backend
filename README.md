@@ -54,6 +54,13 @@
 - `PRIMARY_MAX_ATTEMPTS`（默认 `1`）
 - `FALLBACK_MAX_ATTEMPTS`（默认 `1`）
 - `PRIMARY_EMPTY_RESPONSE_RETRY_COUNT`（默认 `1`）
+- `REDIS_URL`（未配置时关闭跨 worker 熔断状态）
+- `REDIS_KEY_NAMESPACE`（默认 `text_image_field_shortcut`）
+- `REDIS_SOCKET_TIMEOUT_SECONDS`（默认 `1`）
+- `CIRCUIT_FAILURE_THRESHOLD`（默认 `3`）
+- `CIRCUIT_OPEN_SECONDS`（默认 `60`）
+- `CIRCUIT_MAX_OPEN_SECONDS`（默认 `900`）
+- `CIRCUIT_STATE_TTL_SECONDS`（默认 `86400`）
 
 说明：
 - API Key 从环境变量 `API_KEY` 读取，无需在请求头传入

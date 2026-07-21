@@ -68,6 +68,22 @@ class RoutingSettings:
     primary_empty_response_retry_count: int = 1
 
 
+@dataclass(frozen=True)
+class CircuitBreakerSettings:
+    failure_threshold: int = 3
+    open_seconds: float = 60.0
+    max_open_seconds: float = 900.0
+    state_ttl_seconds: int = 86_400
+
+
+@dataclass(frozen=True)
+class StateSettings:
+    redis_url: str = ""
+    namespace: str = "text_image_field_shortcut"
+    socket_timeout_seconds: float = 1.0
+    circuit: CircuitBreakerSettings = field(default_factory=CircuitBreakerSettings)
+
+
 @dataclass
 class AppSettings:
     api_base_url: str
@@ -82,6 +98,7 @@ class AppSettings:
     openrouter_api_url: str = "https://openrouter.ai/api/v1"
     openrouter_api_key: str = ""
     routing: RoutingSettings = field(default_factory=RoutingSettings)
+    state: StateSettings = field(default_factory=StateSettings)
 
     @property
     def default_model_id(self) -> str:
@@ -171,6 +188,25 @@ def get_app_settings() -> AppSettings:
             fallback_max_attempts=_read_positive_int("FALLBACK_MAX_ATTEMPTS", 1),
             primary_empty_response_retry_count=_read_non_negative_int(
                 "PRIMARY_EMPTY_RESPONSE_RETRY_COUNT", 1
+            ),
+        ),
+        state=StateSettings(
+            redis_url=os.getenv("REDIS_URL", "").strip(),
+            namespace=os.getenv(
+                "REDIS_KEY_NAMESPACE", "text_image_field_shortcut"
+            ).strip(),
+            socket_timeout_seconds=_read_positive_float(
+                "REDIS_SOCKET_TIMEOUT_SECONDS", 1.0
+            ),
+            circuit=CircuitBreakerSettings(
+                failure_threshold=_read_positive_int("CIRCUIT_FAILURE_THRESHOLD", 3),
+                open_seconds=_read_positive_float("CIRCUIT_OPEN_SECONDS", 60.0),
+                max_open_seconds=_read_positive_float(
+                    "CIRCUIT_MAX_OPEN_SECONDS", 900.0
+                ),
+                state_ttl_seconds=_read_positive_int(
+                    "CIRCUIT_STATE_TTL_SECONDS", 86_400
+                ),
             ),
         ),
     )

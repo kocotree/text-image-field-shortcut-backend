@@ -13,7 +13,7 @@ from flask import Flask, jsonify, request, send_file
 from services.domain.errors import ErrorCategory, ProviderError
 from services.image_pipeline import generate_image_only, process_image_request
 from services.model_registry import load_provider_configuration
-from services.routing import FailoverExhaustedError
+from services.routing import FailoverExhaustedError, build_failover_router
 from services.settings import get_app_settings
 from services.understand_pipeline import process_understand_request
 from services.request_auth import RequestAuthError, verify_base_request
@@ -165,7 +165,13 @@ def create_app() -> Flask:
             data={
                 "service": "text-image-field-shortcut-backend",
                 "version": "runtime",
-                "routes": ["/health", "/api/process-image", "/api/generate-image", "/api/understand-image"],
+                "routes": [
+                    "/health",
+                    "/health/providers",
+                    "/api/process-image",
+                    "/api/generate-image",
+                    "/api/understand-image",
+                ],
             },
         )
 
@@ -177,6 +183,16 @@ def create_app() -> Flask:
             data={
                 "status": "healthy",
             },
+        )
+
+    @app.get("/health/providers")
+    @require_auth
+    def provider_health():
+        logger.info("provider.health.requested")
+        return build_json_response(
+            success=True,
+            message="ok",
+            data=build_failover_router(get_app_settings()).status(),
         )
 
     @app.post("/api/process-image")

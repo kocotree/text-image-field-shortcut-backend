@@ -8,6 +8,7 @@ from services.model_registry import load_model_registry
 from services.request_parser import GenerateImageRequest, UnderstandImageRequest
 from services.response_normalizer import NormalizedGeneratedAsset, NormalizedModelResult
 from services.routing import FailoverExhaustedError, FailoverRouter
+from services.routing.circuit_breaker import CircuitOpenError, CircuitState
 from services.settings import AppSettings, OssSettings, RoutingSettings
 
 
@@ -82,6 +83,22 @@ class FakeProvider:
             raise outcome
         return outcome
 
+
+class PrimaryOpenCircuitBreaker:
+    state_available = True
+
+    def before_call(self, provider: str, capability: str) -> CircuitState:
+        if provider == "easyrouter":
+            raise CircuitOpenError(provider, capability, CircuitState.OPEN)
+        return CircuitState.CLOSED
+
+    def record_success(self, provider: str, capability: str) -> None:
+        return None
+
+    def record_failure(
+        self, provider: str, capability: str, error: ProviderError
+    ) -> bool:
+        return False
 
 def _build_settings(*, fallback_enabled: bool = True) -> AppSettings:
     return AppSettings(
@@ -258,6 +275,27 @@ class FailoverRouterTestCase(unittest.TestCase):
             router.generate_image(_build_request())
 
         self.assertEqual(fallback.calls, [])
+
+    def test_open_primary_circuit_skips_directly_to_fallback(self) -> None:
+        fallback_result = _image_result(
+            "openrouter",
+            "gemini-3.1-flash-image",
+            "google/gemini-3.1-flash-image",
+        )
+        primary = FakeProvider("easyrouter", [])
+        fallback = FakeProvider("openrouter", [fallback_result])
+        router = FailoverRouter(
+            _build_settings(),
+            self.registry,
+            {"easyrouter": primary, "openrouter": fallback},
+            PrimaryOpenCircuitBreaker(),
+        )
+
+        result = router.generate_image(_build_request())
+
+        self.assertTrue(result.fallback_used)
+        self.assertEqual(primary.calls, [])
+        self.assertEqual(result.attempts[0].attempt, 0)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@
 - `POST /api/process-image` — 生成图片并上传 OSS，返回 OSS URL
 - `POST /api/generate-image` — 生成图片，直接返回图片二进制文件
 - `POST /api/understand-image` — 图片理解，接收图片返回文本描述
+- `GET /health/providers` — 查询服务商熔断状态，需要访问令牌
 
 当前约束：
 - backend 支持两条链路：Gemini 和 GPT Image
