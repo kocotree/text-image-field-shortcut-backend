@@ -31,13 +31,21 @@ class ProviderClient(Protocol):
     name: str
 
     def generate_image(
-        self, request: GenerateImageRequest, public_model: str, provider_model: str
+        self,
+        request: GenerateImageRequest,
+        public_model: str,
+        provider_model: str,
+        timeout_seconds: float | None = None,
     ) -> ImageProviderResult:
         """调用服务商生成图片。"""
         ...
 
     def understand_image(
-        self, request: UnderstandImageRequest, public_model: str, provider_model: str
+        self,
+        request: UnderstandImageRequest,
+        public_model: str,
+        provider_model: str,
+        timeout_seconds: float | None = None,
     ) -> TextProviderResult:
         """调用服务商理解图片。"""
         ...

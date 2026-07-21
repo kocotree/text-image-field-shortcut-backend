@@ -17,7 +17,7 @@ from services.domain.errors import (
     provider_error_from_httpx,
     provider_error_from_status,
 )
-from services.http import AssetFetcher, build_asset_fetcher, get_http_client
+from services.http import AssetFetcher, build_asset_fetcher, build_request_timeout, get_http_client
 from services.request_parser import GenerateImageRequest, UnderstandImageRequest
 from services.settings import AppSettings, HttpClientSettings
 
@@ -342,6 +342,7 @@ def invoke_gemini(
     api_key: str,
     client_settings: HttpClientSettings | None = None,
     client: httpx.Client | None = None,
+    timeout_seconds: float | None = None,
 ) -> GeminiRawResponse:
     """调用 Gemini 兼容接口。
 
@@ -350,6 +351,7 @@ def invoke_gemini(
         api_key: 服务商 API Key。
         client_settings: 共享客户端使用的超时与连接池配置。
         client: 测试或特殊场景注入的 HTTPX 客户端。
+        timeout_seconds: 路由层分配给本次调用的最大秒数。
 
     返回值：
         包含响应状态、响应头和原始字节的 Gemini 响应。
@@ -364,9 +366,10 @@ def invoke_gemini(
         )
 
     request_body_size = len(str(invocation_plan.request_body).encode("utf-8"))
+    resolved_client_settings = client_settings or HttpClientSettings()
     http_client = client or get_http_client(
         "easyrouter",
-        client_settings or HttpClientSettings(),
+        resolved_client_settings,
     )
     start_time = time.perf_counter()
 
@@ -388,6 +391,7 @@ def invoke_gemini(
                 "Authorization": f"Bearer {api_key}",
                 "Accept": "*/*",
             },
+            timeout=build_request_timeout(resolved_client_settings, timeout_seconds),
         )
         response_body = response.content
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)

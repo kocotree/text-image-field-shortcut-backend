@@ -16,6 +16,8 @@
 - Gemini 图片理解（图片→文本）
 - 真实 OSS 上传
 - 直接返回图片文件（无需 OSS）
+- EasyRouter 主服务商与 OpenRouter 顺序兜底
+- 可配置的同服务商重试、请求总时限和路由结果标识
 
 ## 配置
 
@@ -48,6 +50,10 @@
 - `FALLBACK_ENABLED`（默认 `false`）
 - `OPENROUTER_API_URL`（默认 `https://openrouter.ai/api/v1`）
 - `OPENROUTER_API_KEY`
+- `MODEL_REQUEST_DEADLINE_SECONDS`（默认 `390`，应小于 Gunicorn 超时）
+- `PRIMARY_MAX_ATTEMPTS`（默认 `1`）
+- `FALLBACK_MAX_ATTEMPTS`（默认 `1`）
+- `PRIMARY_EMPTY_RESPONSE_RETRY_COUNT`（默认 `1`）
 
 说明：
 - API Key 从环境变量 `API_KEY` 读取，无需在请求头传入

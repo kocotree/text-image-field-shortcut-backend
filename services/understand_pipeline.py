@@ -2,25 +2,30 @@ from __future__ import annotations
 
 import logging
 
-from services.gemini_service import build_gemini_understand_plan, invoke_gemini
 from services.request_parser import UnderstandImageRequest
-from services.response_extractor import extract_text_from_gemini_response
+from services.routing import build_failover_router
 from services.settings import get_app_settings
 
 logger = logging.getLogger(__name__)
 
 
-def process_understand_request(request_data: UnderstandImageRequest) -> dict[str, str]:
+def process_understand_request(request_data: UnderstandImageRequest) -> dict[str, str | bool]:
+    """执行图片理解并返回服务商路由信息。
+
+    参数：
+        request_data: 已解析完成的图片理解请求。
+
+    返回值：
+        包含文本、公共模型和服务商路由信息的结果。
+    """
     settings = get_app_settings()
-    plan = build_gemini_understand_plan(request_data, settings)
-
-    logger.info("understand.pipeline.invocation_plan: %s", plan.to_dict())
-
-    raw_response = invoke_gemini(plan, settings.api_key, settings.http.provider)
-    text = extract_text_from_gemini_response(raw_response)
+    route_result = build_failover_router(settings).understand_image(request_data)
+    provider_result = route_result.provider_result
 
     return {
         "requestId": request_data.request_id,
-        "model": plan.model,
-        "text": text,
+        "model": provider_result.public_model,
+        "text": provider_result.text,
+        "provider": provider_result.provider,
+        "fallbackUsed": route_result.fallback_used,
     }

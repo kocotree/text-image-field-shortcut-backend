@@ -169,7 +169,9 @@ GPT Image 2 示例：
     "ossUrl": "https://your-bucket.oss-cn-hangzhou.aliyuncs.com/path/to/file.png",
     "ossUrls": [
       "https://your-bucket.oss-cn-hangzhou.aliyuncs.com/path/to/file-1.png"
-    ]
+    ],
+    "provider": "easyrouter",
+    "fallbackUsed": false
   }
 }
 ```
@@ -180,6 +182,8 @@ GPT Image 2 示例：
 
 - 响应 `Content-Type`：图片的 MIME 类型（如 `image/png`）
 - 响应 `Content-Disposition`：附带文件名
+- 响应 `X-Model-Provider`：实际完成请求的服务商
+- 响应 `X-Fallback-Used`：是否使用兜底服务商
 - 响应体：图片二进制数据
 
 成功时直接返回图片文件流；失败时返回 JSON 错误信息：
@@ -228,7 +232,9 @@ GPT Image 2 示例：
   "data": {
     "requestId": "req-001",
     "model": "gemini-2.5-flash-image",
-    "text": "这是一张风景照片，画面中..."
+    "text": "这是一张风景照片，画面中...",
+    "provider": "easyrouter",
+    "fallbackUsed": false
   }
 }
 ```
@@ -238,3 +244,4 @@ GPT Image 2 示例：
 - 不需要 `aspectRatio` / `imageSize` 参数
 - 参考图数量上限为 14
 - 默认走 Gemini 链路，不支持 GPT Image
+- EasyRouter 出现可恢复故障且 `FALLBACK_ENABLED=true` 时使用 OpenRouter

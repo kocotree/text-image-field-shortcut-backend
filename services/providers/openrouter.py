@@ -17,7 +17,7 @@ from services.domain.errors import (
 )
 from services.domain.provider import ImageProviderResult, TextProviderResult
 from services.gemini_service import GeminiRawResponse
-from services.http import get_http_client
+from services.http import build_request_timeout, get_http_client
 from services.request_parser import GenerateImageRequest, UnderstandImageRequest, UploadedFileInfo
 from services.response_extractor import extract_text_from_gemini_response
 from services.response_normalizer import normalize_gemini_response
@@ -83,7 +83,11 @@ class OpenRouterProvider:
         self._client = client or get_http_client(self.name, settings.http.provider)
 
     def generate_image(
-        self, request: GenerateImageRequest, public_model: str, provider_model: str
+        self,
+        request: GenerateImageRequest,
+        public_model: str,
+        provider_model: str,
+        timeout_seconds: float | None = None,
     ) -> ImageProviderResult:
         """调用 OpenRouter Images API 生成图片。
 
@@ -91,6 +95,7 @@ class OpenRouterProvider:
             request: 业务层标准图片生成请求。
             public_model: 客户端使用的公共模型 ID。
             provider_model: OpenRouter 实际接收的模型 ID。
+            timeout_seconds: 路由层分配给本次调用的最大秒数。
 
         返回值：
             包含标准图片结果、模型和耗时的服务商结果。
@@ -107,7 +112,9 @@ class OpenRouterProvider:
         if input_references:
             body["input_references"] = input_references
 
-        response, elapsed_ms = self._post("/images", body, request.request_id)
+        response, elapsed_ms = self._post(
+            "/images", body, request.request_id, timeout_seconds
+        )
         raw_response = GeminiRawResponse(
             status_code=response.status_code,
             content_type=response.headers.get("content-type", "application/json"),
@@ -134,7 +141,11 @@ class OpenRouterProvider:
         )
 
     def understand_image(
-        self, request: UnderstandImageRequest, public_model: str, provider_model: str
+        self,
+        request: UnderstandImageRequest,
+        public_model: str,
+        provider_model: str,
+        timeout_seconds: float | None = None,
     ) -> TextProviderResult:
         """调用 OpenRouter Chat Completions API 理解图片。
 
@@ -142,6 +153,7 @@ class OpenRouterProvider:
             request: 业务层标准图片理解请求。
             public_model: 客户端使用的公共模型 ID。
             provider_model: OpenRouter 实际接收的模型 ID。
+            timeout_seconds: 路由层分配给本次调用的最大秒数。
 
         返回值：
             包含文本、模型和耗时的服务商结果。
@@ -155,7 +167,9 @@ class OpenRouterProvider:
             "model": provider_model,
             "messages": [{"role": "user", "content": content}],
         }
-        response, elapsed_ms = self._post("/chat/completions", body, request.request_id)
+        response, elapsed_ms = self._post(
+            "/chat/completions", body, request.request_id, timeout_seconds
+        )
         raw_response = GeminiRawResponse(
             status_code=response.status_code,
             content_type=response.headers.get("content-type", "application/json"),
@@ -182,7 +196,11 @@ class OpenRouterProvider:
         )
 
     def _post(
-        self, path: str, body: dict[str, Any], request_id: str
+        self,
+        path: str,
+        body: dict[str, Any],
+        request_id: str,
+        timeout_seconds: float | None,
     ) -> tuple[httpx.Response, float]:
         if not self._api_key:
             raise ProviderError(
@@ -206,6 +224,9 @@ class OpenRouterProvider:
                     "Authorization": f"Bearer {self._api_key}",
                     "Content-Type": "application/json",
                 },
+                timeout=build_request_timeout(
+                    self._settings.http.provider, timeout_seconds
+                ),
             )
         except httpx.HTTPError as exc:
             logger.warning(

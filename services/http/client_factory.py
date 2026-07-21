@@ -39,6 +39,31 @@ def create_http_client(settings: HttpClientSettings) -> httpx.Client:
     )
 
 
+def build_request_timeout(
+    settings: HttpClientSettings, max_seconds: float | None = None
+) -> httpx.Timeout:
+    """创建受剩余请求时间约束的分阶段超时。
+
+    参数：
+        settings: 客户端默认的分阶段超时配置。
+        max_seconds: 当前路由请求允许单次调用占用的最大秒数。
+
+    返回值：
+        可直接传给 HTTPX 请求方法的分阶段超时。
+    """
+    configured = settings.timeout
+
+    def limit(value: float) -> float:
+        return min(value, max_seconds) if max_seconds is not None else value
+
+    return httpx.Timeout(
+        connect=limit(configured.connect),
+        read=limit(configured.read),
+        write=limit(configured.write),
+        pool=limit(configured.pool),
+    )
+
+
 class HttpClientRegistry:
     """按用途管理当前 worker 内长期复用的 HTTPX 客户端。"""
 

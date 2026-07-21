@@ -60,6 +60,14 @@ class HttpSettings:
     asset_max_bytes: int = 52_428_800
 
 
+@dataclass(frozen=True)
+class RoutingSettings:
+    request_deadline_seconds: float = 390.0
+    primary_max_attempts: int = 1
+    fallback_max_attempts: int = 1
+    primary_empty_response_retry_count: int = 1
+
+
 @dataclass
 class AppSettings:
     api_base_url: str
@@ -73,6 +81,7 @@ class AppSettings:
     fallback_enabled: bool = False
     openrouter_api_url: str = "https://openrouter.ai/api/v1"
     openrouter_api_key: str = ""
+    routing: RoutingSettings = field(default_factory=RoutingSettings)
 
     @property
     def default_model_id(self) -> str:
@@ -156,6 +165,14 @@ def get_app_settings() -> AppSettings:
         fallback_enabled=_read_bool("FALLBACK_ENABLED", False),
         openrouter_api_url=os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1").strip(),
         openrouter_api_key=os.getenv("OPENROUTER_API_KEY", "").strip(),
+        routing=RoutingSettings(
+            request_deadline_seconds=_read_positive_float("MODEL_REQUEST_DEADLINE_SECONDS", 390.0),
+            primary_max_attempts=_read_positive_int("PRIMARY_MAX_ATTEMPTS", 1),
+            fallback_max_attempts=_read_positive_int("FALLBACK_MAX_ATTEMPTS", 1),
+            primary_empty_response_retry_count=_read_non_negative_int(
+                "PRIMARY_EMPTY_RESPONSE_RETRY_COUNT", 1
+            ),
+        ),
     )
 
 

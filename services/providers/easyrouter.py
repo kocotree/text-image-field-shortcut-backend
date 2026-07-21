@@ -26,7 +26,11 @@ class EasyRouterProvider:
         self._settings = settings
 
     def generate_image(
-        self, request: GenerateImageRequest, public_model: str, provider_model: str
+        self,
+        request: GenerateImageRequest,
+        public_model: str,
+        provider_model: str,
+        timeout_seconds: float | None = None,
     ) -> ImageProviderResult:
         """调用 EasyRouter 生成图片。
 
@@ -34,6 +38,7 @@ class EasyRouterProvider:
             request: 业务层标准图片生成请求。
             public_model: 客户端使用的公共模型 ID。
             provider_model: EasyRouter 实际接收的模型 ID。
+            timeout_seconds: 路由层分配给本次调用的最大秒数。
 
         返回值：
             包含标准图片结果、模型和耗时的服务商结果。
@@ -46,6 +51,7 @@ class EasyRouterProvider:
                 plan,
                 self._settings.api_key,
                 self._settings.http.provider,
+                timeout_seconds=timeout_seconds,
             )
         else:
             plan = build_gemini_invocation_plan(provider_request, self._settings)
@@ -53,6 +59,7 @@ class EasyRouterProvider:
                 plan,
                 self._settings.api_key,
                 self._settings.http.provider,
+                timeout_seconds=timeout_seconds,
             )
 
         try:
@@ -77,7 +84,11 @@ class EasyRouterProvider:
         )
 
     def understand_image(
-        self, request: UnderstandImageRequest, public_model: str, provider_model: str
+        self,
+        request: UnderstandImageRequest,
+        public_model: str,
+        provider_model: str,
+        timeout_seconds: float | None = None,
     ) -> TextProviderResult:
         """调用 EasyRouter 理解图片。
 
@@ -85,6 +96,7 @@ class EasyRouterProvider:
             request: 业务层标准图片理解请求。
             public_model: 客户端使用的公共模型 ID。
             provider_model: EasyRouter 实际接收的模型 ID。
+            timeout_seconds: 路由层分配给本次调用的最大秒数。
 
         返回值：
             包含文本、模型和耗时的服务商结果。
@@ -96,6 +108,7 @@ class EasyRouterProvider:
             plan,
             self._settings.api_key,
             self._settings.http.provider,
+            timeout_seconds=timeout_seconds,
         )
         try:
             text = extract_text_from_gemini_response(raw_response)
