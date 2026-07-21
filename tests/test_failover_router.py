@@ -100,6 +100,27 @@ class PrimaryOpenCircuitBreaker:
     ) -> bool:
         return False
 
+
+class CollectingEventReporter:
+    def __init__(self) -> None:
+        self.events: list[tuple[str, tuple]] = []
+
+    def on_provider_failure(self, *args) -> None:
+        self.events.append(("provider_failure", args))
+
+    def on_fallback_used(self, *args) -> None:
+        self.events.append(("fallback_used", args))
+
+    def on_circuit_open(self, *args) -> None:
+        self.events.append(("circuit_open", args))
+
+    def on_all_providers_failed(self, *args) -> None:
+        self.events.append(("all_failed", args))
+
+    def on_primary_success(self, *args) -> None:
+        self.events.append(("primary_success", args))
+
+
 def _build_settings(*, fallback_enabled: bool = True) -> AppSettings:
     return AppSettings(
         api_base_url="https://easyrouter.example",
@@ -171,10 +192,12 @@ class FailoverRouterTestCase(unittest.TestCase):
         )
         primary = FakeProvider("easyrouter", [primary_error])
         fallback = FakeProvider("openrouter", [fallback_result])
+        reporter = CollectingEventReporter()
         router = FailoverRouter(
             _build_settings(),
             self.registry,
             {"easyrouter": primary, "openrouter": fallback},
+            event_reporter=reporter,
         )
 
         result = router.generate_image(_build_request())
@@ -183,6 +206,10 @@ class FailoverRouterTestCase(unittest.TestCase):
         self.assertEqual(fallback.calls[0][1], "google/gemini-3.1-flash-image")
         self.assertGreater(fallback.calls[0][2] or 0, 0)
         self.assertEqual([item.provider for item in result.attempts], ["easyrouter", "openrouter"])
+        self.assertEqual(
+            [event[0] for event in reporter.events],
+            ["provider_failure", "fallback_used"],
+        )
 
     def test_non_retryable_error_does_not_call_fallback(self) -> None:
         primary_error = ProviderError(
@@ -243,6 +270,7 @@ class FailoverRouterTestCase(unittest.TestCase):
             message="limited",
             retryable=True,
         )
+        reporter = CollectingEventReporter()
         router = FailoverRouter(
             _build_settings(),
             self.registry,
@@ -250,12 +278,17 @@ class FailoverRouterTestCase(unittest.TestCase):
                 "easyrouter": FakeProvider("easyrouter", [primary_error]),
                 "openrouter": FakeProvider("openrouter", [fallback_error]),
             },
+            event_reporter=reporter,
         )
 
         with self.assertRaises(FailoverExhaustedError) as raised:
             router.generate_image(_build_request())
 
         self.assertEqual(len(raised.exception.errors), 2)
+        self.assertEqual(
+            [event[0] for event in reporter.events],
+            ["provider_failure", "provider_failure", "all_failed"],
+        )
 
     def test_fallback_switch_can_disable_openrouter(self) -> None:
         primary_error = ProviderError(

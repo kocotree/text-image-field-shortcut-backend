@@ -26,6 +26,10 @@ class StateStore(Protocol):
         """尝试获取带有效期的分布式锁。"""
         ...
 
+    def record_event(self, key: str, window_seconds: int) -> int:
+        """记录滚动窗口事件并返回窗口内事件数。"""
+        ...
+
 
 class NullStateStore:
     """在 Redis 未配置或不可用时保持业务链路可运行。"""
@@ -46,3 +50,6 @@ class NullStateStore:
 
     def acquire_lock(self, key: str, ttl_seconds: int) -> bool:
         return True
+
+    def record_event(self, key: str, window_seconds: int) -> int:
+        return 0

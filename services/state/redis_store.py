@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
+import time
+import uuid
 
 import redis
 
@@ -72,6 +74,24 @@ class RedisStateStore:
         except redis.RedisError:
             self._report_failure("acquire_lock", key)
             return True
+
+    def record_event(self, key: str, window_seconds: int) -> int:
+        namespaced_key = self._key(key)
+        now = time.time()
+        member = f"{now}:{uuid.uuid4().hex}"
+        try:
+            with self._client.pipeline(transaction=True) as pipeline:
+                pipeline.zadd(namespaced_key, {member: now})
+                pipeline.zremrangebyscore(
+                    namespaced_key, "-inf", now - window_seconds
+                )
+                pipeline.zcard(namespaced_key)
+                pipeline.expire(namespaced_key, window_seconds)
+                _, _, count, _ = pipeline.execute()
+            return int(count)
+        except redis.RedisError:
+            self._report_failure("record_event", key)
+            return 0
 
     def _key(self, key: str) -> str:
         return f"{self._namespace}:{key}" if self._namespace else key

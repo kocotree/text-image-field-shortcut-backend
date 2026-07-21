@@ -13,6 +13,7 @@ from services.domain.provider import (
 )
 from services.gemini_service import NANO_BANANA_MODEL
 from services.model_registry import ModelRegistry, ModelRegistryError, load_model_registry
+from services.notifications import FeishuAlertNotifier, RoutingEventReporter
 from services.providers.factory import build_provider_clients
 from services.request_parser import GenerateImageRequest, UnderstandImageRequest
 from services.settings import AppSettings
@@ -72,12 +73,14 @@ class FailoverRouter:
         registry: ModelRegistry,
         providers: dict[str, ProviderClient],
         circuit_breaker: CircuitBreaker | None = None,
+        event_reporter: RoutingEventReporter | None = None,
     ) -> None:
         self._settings = settings
         self._registry = registry
         self._providers = providers
         self._configuration = registry.configuration
         self._circuit_breaker = circuit_breaker
+        self._event_reporter = event_reporter
 
     def status(self) -> dict[str, object]:
         """返回不包含密钥和地址的服务商路由状态。
@@ -104,6 +107,7 @@ class FailoverRouter:
             provider_states[provider_name] = capability_states
         return {
             "fallbackEnabled": self._settings.fallback_enabled,
+            "alertEnabled": self._settings.alert.enabled,
             "stateStoreAvailable": bool(
                 self._circuit_breaker and self._circuit_breaker.state_available
             ),
@@ -147,6 +151,7 @@ class FailoverRouter:
             ),
             attempts=attempts,
             errors=errors,
+            request_id=request.request_id,
         )
         return ImageRouteResult(
             provider_result=result,
@@ -188,6 +193,7 @@ class FailoverRouter:
             is_empty=lambda item: not item.text.strip(),
             attempts=attempts,
             errors=errors,
+            request_id=request.request_id,
         )
         return TextRouteResult(
             provider_result=result,
@@ -205,6 +211,7 @@ class FailoverRouter:
         is_empty: Callable[[TProviderResult], bool],
         attempts: list[RouteAttempt],
         errors: list[ProviderError],
+        request_id: str,
     ) -> TProviderResult:
         provider_names = [self._configuration.primary_provider]
         if self._settings.fallback_enabled:
@@ -234,6 +241,9 @@ class FailoverRouter:
 
             if provider_index > 0 and not self._registry.supports(public_model, capability):
                 continue
+            fallback_trigger_category = (
+                str(errors[-1].category) if provider_index > 0 and errors else ""
+            )
 
             if self._circuit_breaker:
                 try:
@@ -351,6 +361,23 @@ class FailoverRouter:
                         self._circuit_breaker.record_success(
                             provider_name, capability
                         )
+                    if self._event_reporter:
+                        if provider_index == 0:
+                            self._event_reporter.on_primary_success(
+                                provider_name,
+                                capability,
+                                public_model,
+                                request_id,
+                            )
+                        else:
+                            self._event_reporter.on_fallback_used(
+                                self._configuration.primary_provider,
+                                provider_name,
+                                capability,
+                                public_model,
+                                fallback_trigger_category,
+                                request_id,
+                            )
                     return result
                 except ProviderError as error:
                     elapsed_ms = round((time.perf_counter() - started_at) * 1000, 2)
@@ -378,9 +405,24 @@ class FailoverRouter:
                     )
                     if not error.retryable:
                         if self._circuit_breaker:
-                            self._circuit_breaker.record_failure(
+                            circuit_opened = self._circuit_breaker.record_failure(
                                 provider_name, capability, error
                             )
+                            self._report_circuit_open(
+                                circuit_opened,
+                                provider_name,
+                                capability,
+                                public_model,
+                                error,
+                                request_id,
+                            )
+                        self._report_provider_failure(
+                            provider_name,
+                            capability,
+                            public_model,
+                            error,
+                            request_id,
+                        )
                         raise
                     if attempt_number < max_attempts:
                         if self._wait_for_retry(error, deadline):
@@ -388,11 +430,35 @@ class FailoverRouter:
                     break
 
             if provider_error and self._circuit_breaker:
-                self._circuit_breaker.record_failure(
+                circuit_opened = self._circuit_breaker.record_failure(
                     provider_name, capability, provider_error
+                )
+                self._report_circuit_open(
+                    circuit_opened,
+                    provider_name,
+                    capability,
+                    public_model,
+                    provider_error,
+                    request_id,
+                )
+            if provider_error:
+                self._report_provider_failure(
+                    provider_name,
+                    capability,
+                    public_model,
+                    provider_error,
+                    request_id,
                 )
 
         if len({error.provider for error in errors}) > 1:
+            if self._event_reporter:
+                self._event_reporter.on_all_providers_failed(
+                    self._configuration.primary_provider,
+                    capability,
+                    public_model,
+                    str(errors[-1].category),
+                    request_id,
+                )
             raise FailoverExhaustedError(tuple(errors))
         if errors:
             raise errors[-1]
@@ -413,6 +479,41 @@ class FailoverRouter:
             if allow_unregistered and public_model:
                 return public_model
             raise
+
+    def _report_provider_failure(
+        self,
+        provider: str,
+        capability: str,
+        public_model: str,
+        error: ProviderError,
+        request_id: str,
+    ) -> None:
+        if self._event_reporter:
+            self._event_reporter.on_provider_failure(
+                provider,
+                capability,
+                public_model,
+                error,
+                request_id,
+            )
+
+    def _report_circuit_open(
+        self,
+        opened: bool,
+        provider: str,
+        capability: str,
+        public_model: str,
+        error: ProviderError,
+        request_id: str,
+    ) -> None:
+        if opened and self._event_reporter:
+            self._event_reporter.on_circuit_open(
+                provider,
+                capability,
+                public_model,
+                str(error.category),
+                request_id,
+            )
 
     @staticmethod
     def _wait_for_retry(error: ProviderError, deadline: float) -> bool:
@@ -437,7 +538,17 @@ def build_failover_router(settings: AppSettings) -> FailoverRouter:
     """
     registry = load_model_registry(settings.provider_config_path)
     providers = dict(build_provider_clients(settings, registry.configuration))
-    circuit_breaker = CircuitBreaker(
-        build_state_store(settings.state), settings.state.circuit
+    state_store = build_state_store(settings.state)
+    circuit_breaker = CircuitBreaker(state_store, settings.state.circuit)
+    event_reporter = RoutingEventReporter(
+        state_store,
+        FeishuAlertNotifier(settings.alert, settings.http.notification),
+        settings.alert,
     )
-    return FailoverRouter(settings, registry, providers, circuit_breaker)
+    return FailoverRouter(
+        settings,
+        registry,
+        providers,
+        circuit_breaker,
+        event_reporter,
+    )

@@ -84,6 +84,21 @@ class StateSettings:
     circuit: CircuitBreakerSettings = field(default_factory=CircuitBreakerSettings)
 
 
+@dataclass(frozen=True)
+class AlertSettings:
+    enabled: bool = False
+    webhook_url: str = ""
+    secret: str = ""
+    service_name: str = "text-image-field-shortcut-backend"
+    environment: str = "production"
+    fallback_window_seconds: int = 300
+    fallback_threshold: int = 3
+    fallback_cooldown_seconds: int = 900
+    critical_cooldown_seconds: int = 60
+    recovery_success_threshold: int = 3
+    incident_ttl_seconds: int = 86_400
+
+
 @dataclass
 class AppSettings:
     api_base_url: str
@@ -99,6 +114,7 @@ class AppSettings:
     openrouter_api_key: str = ""
     routing: RoutingSettings = field(default_factory=RoutingSettings)
     state: StateSettings = field(default_factory=StateSettings)
+    alert: AlertSettings = field(default_factory=AlertSettings)
 
     @property
     def default_model_id(self) -> str:
@@ -123,7 +139,7 @@ def get_app_settings() -> AppSettings:
     )
     trust_env = _read_bool("HTTP_TRUST_ENV", False)
 
-    return AppSettings(
+    settings = AppSettings(
         api_base_url=os.getenv("DEFAULT_API_URL", "https://easyrouter.io").strip(),
         api_key=os.getenv("DEFAULT_API_KEY", "").strip(),
         nano_banana_2_model_id=os.getenv("NANO_BANANA_2_MODEL_ID", "").strip(),
@@ -209,7 +225,53 @@ def get_app_settings() -> AppSettings:
                 ),
             ),
         ),
+        alert=AlertSettings(
+            enabled=_read_bool("FEISHU_ALERT_ENABLED", False),
+            webhook_url=os.getenv("FEISHU_ALERT_WEBHOOK_URL", "").strip(),
+            secret=os.getenv("FEISHU_ALERT_SECRET", "").strip(),
+            service_name=os.getenv(
+                "SERVICE_NAME", "text-image-field-shortcut-backend"
+            ).strip(),
+            environment=os.getenv("APP_ENV", "production").strip(),
+            fallback_window_seconds=_read_positive_int(
+                "FALLBACK_ALERT_WINDOW_SECONDS", 300
+            ),
+            fallback_threshold=_read_positive_int(
+                "FALLBACK_ALERT_THRESHOLD", 3
+            ),
+            fallback_cooldown_seconds=_read_positive_int(
+                "FALLBACK_ALERT_COOLDOWN_SECONDS", 900
+            ),
+            critical_cooldown_seconds=_read_positive_int(
+                "CRITICAL_ALERT_COOLDOWN_SECONDS", 60
+            ),
+            recovery_success_threshold=_read_positive_int(
+                "PRIMARY_RECOVERY_SUCCESS_THRESHOLD", 3
+            ),
+            incident_ttl_seconds=_read_positive_int(
+                "ALERT_INCIDENT_TTL_SECONDS", 86_400
+            ),
+        ),
     )
+    validate_app_settings(settings)
+    return settings
+
+
+def validate_app_settings(settings: AppSettings) -> None:
+    """校验需要组合判断的应用配置。
+
+    参数：
+        settings: 已完成环境变量解析的应用配置。
+
+    返回值：
+        无；配置不完整时抛出明确异常。
+    """
+    if settings.alert.enabled and (
+        not settings.alert.webhook_url or not settings.alert.secret
+    ):
+        raise ValueError(
+            "FEISHU_ALERT_ENABLED=true 时必须配置 Webhook URL 和签名密钥。"
+        )
 
 
 def _read_positive_float(name: str, default: float) -> float:
