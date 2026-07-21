@@ -18,7 +18,11 @@ from services.domain.errors import (
     provider_error_from_status,
 )
 from services.http import AssetFetcher, build_asset_fetcher, build_request_timeout, get_http_client
-from services.request_parser import GenerateImageRequest, UnderstandImageRequest
+from services.request_parser import (
+    GenerateImageRequest,
+    UnderstandImageRequest,
+    UploadedFileInfo,
+)
 from services.settings import AppSettings, HttpClientSettings
 
 logger = logging.getLogger(__name__)
