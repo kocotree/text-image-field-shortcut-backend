@@ -9,10 +9,9 @@
 当前约束：
 - backend 支持两条链路：Gemini 和 GPT Image
 - 当 `model` 以 `gpt-image` 开头时走 GPT Image 链路，否则走 Gemini 链路
-- Gemini 模型默认从 `.env` 中的 `NANO_BANANA_2_MODEL_ID` / `NANO_BANANA_PRO_MODEL_ID` 读取
-- Gemini 正式版使用 `gemini-3.1-flash-image` 和 `gemini-3-pro-image`；请求参数或环境变量中的对应 preview 模型会通过兼容映射路由到正式版
-- GPT Image 模型默认从 `.env` 中的 `GPT_IMAGE_MODEL_ID` 读取（默认 `gpt-image-2`）
-- API key 从服务端环境变量 `API_KEY` 读取，前端无需传入
+- 默认模型、正式模型、preview 兼容别名和服务商模型映射由 `config/providers.json` 定义
+- EasyRouter 和 OpenRouter 地址由 `config/providers.json` 定义
+- 服务商 API Key 分别从服务端环境变量 `EASYROUTER_API_KEY` 和 `OPENROUTER_API_KEY` 读取，前端无需传入
 - 请求来源校验依赖两个请求头：`X-Base-Signature` 和 `X-Pack-Id`
 - 服务端会先对 `X-Base-Signature` 验签，再校验签名中的 `packID` 与 `X-Pack-Id` 一致
 - GPT Image 链路不支持参考图（fileUrl/fileUrls/files），传入会返回 400
@@ -24,7 +23,7 @@
 | 字段 | 类型 | 必填 | 默认值 | 说明 |
 |---|---|---|---|---|
 | `prompt` | string | 否 | `""` | 文本提示词 |
-| `model` | string | 否 | `.env` 默认模型 | 以 `gpt-image` 开头走 GPT Image，否则走 Gemini |
+| `model` | string | 否 | `providers.json` 默认模型 | 以 `gpt-image` 开头走 GPT Image，否则走 Gemini |
 | `aspectRatio` | string | 否 | 不填 | 输出图片比例 |
 | `requestId` | string | 否 | `""` | 请求追踪 ID |
 
@@ -123,7 +122,7 @@ GPT Image 2 示例：
 
 说明：
 - `fileUrl` 和 `fileUrls` 会合并成同一个 URL 列表（仅 Gemini）
-- `model` 可不传，不传时走 `.env` 默认模型
+- `model` 可不传，不传时使用 `providers.json` 中的默认模型
 - `model` 以 `gpt-image` 开头时走 GPT Image 链路
 - `aspectRatio` 不传或传空时，Gemini 保持模型默认行为，GPT Image 使用 `auto`
 - `imageSize` 不传时默认 `1K`（仅 Gemini 使用）
@@ -146,7 +145,7 @@ GPT Image 2 示例：
 说明：
 - `file` 适合单文件
 - `files` 适合多文件
-- `model` 可不传，不传时走 `.env` 默认模型
+- `model` 可不传，不传时使用 `providers.json` 中的默认模型
 - `model` 以 `gpt-image` 开头时走 GPT Image 链路
 - `aspectRatio` 不传或传空时，Gemini 保持模型默认行为，GPT Image 使用 `auto`
 - `imageSize` 不传时默认 `1K`（仅 Gemini 使用）
