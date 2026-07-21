@@ -3,17 +3,19 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from services.domain.requests import GenerateImageRequest
 from services.http import build_asset_fetcher
 from services.oss_service import upload_asset_to_oss
-from services.domain.requests import GenerateImageRequest
-from services.routing import build_failover_router
 from services.response_normalizer import NormalizedGeneratedAsset
+from services.routing import build_failover_router
 from services.settings import AppSettings, get_app_settings
 
 logger = logging.getLogger(__name__)
 
 
-def process_image_request(request_data: GenerateImageRequest) -> dict[str, str | bool | list[str]]:
+def process_image_request(
+    request_data: GenerateImageRequest,
+) -> dict[str, str | bool | list[str]]:
     """生成图片并上传至 OSS。
 
     参数：
@@ -27,9 +29,10 @@ def process_image_request(request_data: GenerateImageRequest) -> dict[str, str |
     provider_result = route_result.provider_result
     normalized_result = provider_result.result
 
-    upload_results = [upload_asset_to_oss(settings, asset) for asset in normalized_result.assets]
+    upload_results = [
+        upload_asset_to_oss(settings, asset) for asset in normalized_result.assets
+    ]
     oss_urls = [item.object_url for item in upload_results]
-
     return {
         "requestId": request_data.request_id,
         "model": provider_result.public_model,
@@ -49,9 +52,15 @@ class GeneratedImageFile:
     fallback_used: bool
 
 
-def _resolve_asset_bytes(asset: NormalizedGeneratedAsset, settings: AppSettings) -> bytes:
+def _resolve_asset_bytes(
+    asset: NormalizedGeneratedAsset, settings: AppSettings
+) -> bytes:
     if asset.source_kind == "bytes":
-        return asset.payload if isinstance(asset.payload, bytes) else bytes(asset.payload)
+        return (
+            asset.payload
+            if isinstance(asset.payload, bytes)
+            else bytes(asset.payload)
+        )
     if asset.source_kind == "url":
         return build_asset_fetcher(settings).fetch(str(asset.payload)).body
     return str(asset.payload).encode("utf-8")
@@ -69,9 +78,7 @@ def generate_image_only(request_data: GenerateImageRequest) -> GeneratedImageFil
     settings = get_app_settings()
     route_result = build_failover_router(settings).generate_image(request_data)
     provider_result = route_result.provider_result
-    normalized_result = provider_result.result
-
-    asset = normalized_result.assets[0]
+    asset = provider_result.result.assets[0]
     return GeneratedImageFile(
         data=_resolve_asset_bytes(asset, settings),
         mime_type=asset.mime_type,

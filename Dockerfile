@@ -13,6 +13,7 @@ RUN uv sync --frozen
 
 COPY main.py ./
 COPY gunicorn.py ./
+COPY api ./api
 COPY config ./config
 COPY services ./services
 

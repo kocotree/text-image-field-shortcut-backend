@@ -16,7 +16,7 @@ from api.request_logging import (
 from api.responses import build_json_response, provider_error_response
 from services.domain.errors import ProviderError
 from services.domain.requests import RequestValidationError
-from services.image_pipeline import generate_image_only, process_image_request
+from services.pipelines import generate_image_only, process_image_request
 
 logger = logging.getLogger(__name__)
 image_blueprint = Blueprint("image", __name__)

@@ -11,7 +11,7 @@ from api.request_logging import build_request_log_summary
 from api.responses import build_json_response, provider_error_response
 from services.domain.errors import ProviderError
 from services.domain.requests import RequestValidationError
-from services.understand_pipeline import process_understand_request
+from services.pipelines import process_understand_request
 
 logger = logging.getLogger(__name__)
 understanding_blueprint = Blueprint("understanding", __name__)
