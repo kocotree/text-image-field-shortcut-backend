@@ -14,7 +14,7 @@ from services.domain.provider import (
 from services.model_registry import ModelRegistry, ModelRegistryError, load_model_registry
 from services.notifications import FeishuAlertNotifier, RoutingEventReporter
 from services.providers.factory import build_provider_clients
-from services.request_parser import GenerateImageRequest, UnderstandImageRequest
+from services.domain.requests import GenerateImageRequest, UnderstandImageRequest
 from services.settings import AppSettings
 from services.routing.circuit_breaker import CircuitBreaker, CircuitOpenError
 from services.state import build_state_store

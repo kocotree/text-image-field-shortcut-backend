@@ -19,7 +19,7 @@ from services.domain.errors import (
     provider_error_from_status,
 )
 from services.http import AssetFetcher, build_asset_fetcher, build_request_timeout, get_http_client
-from services.request_parser import (
+from services.domain.requests import (
     GenerateImageRequest,
     UnderstandImageRequest,
     UploadedFileInfo,

@@ -11,7 +11,6 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 
-
 BASE_PUBLIC_KEY = b"""-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxKNV23rheRvtUKDMJPOW
 GhUt+W25k63X4Q1QYhztPlobF2VNIDR6eHVFUDP22aytzVguisJ/GaOKZ7FJDKis
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class RequestAuthError(RuntimeError):
-    pass
+    """字段捷径签名认证失败。"""
 
 
 @dataclass
@@ -44,13 +43,13 @@ def _decode_base64_urlsafe(value: str) -> bytes:
 
 
 def _load_signature_payload(base_signature: str) -> tuple[str, bytes]:
-    src_base64_data, separator, src_base64_sign_data = str(base_signature or "").partition(".")
-    if not separator or not src_base64_data or not src_base64_sign_data:
+    data, separator, signature = str(base_signature or "").partition(".")
+    if not separator or not data or not signature:
         raise RequestAuthError("Invalid baseSignature format")
-
-    src_data = _decode_base64_urlsafe(src_base64_data).decode("utf-8")
-    src_sign_data = _decode_base64_urlsafe(src_base64_sign_data)
-    return src_data, src_sign_data
+    return (
+        _decode_base64_urlsafe(data).decode("utf-8"),
+        _decode_base64_urlsafe(signature),
+    )
 
 
 def _verify_signature(src_data: str, src_sign_data: bytes) -> None:
@@ -76,32 +75,38 @@ def _parse_payload(src_data: str) -> BaseSignaturePayload:
     )
 
 
-def verify_base_request(base_signature: str, pack_id: str) -> BaseSignaturePayload:
+def verify_base_request(
+    base_signature: str, pack_id: str
+) -> BaseSignaturePayload:
+    """校验字段捷径请求签名。
+
+    参数：
+        base_signature: `X-Base-Signature` 请求头原值。
+        pack_id: `X-Pack-Id` 请求头原值。
+
+    返回值：
+        已验证的签名载荷。
+    """
     if not base_signature:
         raise RequestAuthError("Missing X-Base-Signature header")
-
     if not pack_id:
         raise RequestAuthError("Missing X-Pack-Id header")
 
     src_data, src_sign_data = _load_signature_payload(base_signature)
     _verify_signature(src_data, src_sign_data)
-
     payload = _parse_payload(src_data)
 
     if payload.source != "base":
         raise RequestAuthError("Invalid baseSignature source")
-
     if payload.version != "v1":
         raise RequestAuthError("Unsupported baseSignature version")
-
     if payload.pack_id != pack_id:
         raise RequestAuthError("Pack ID mismatch")
-
     if payload.exp and payload.exp < int(time.time() * 1000):
         raise RequestAuthError("baseSignature expired")
 
     logger.debug(
-        "gemini.backend.auth.verify.success: %s",
+        "api.auth.base_signature.success: %s",
         {
             "source": payload.source,
             "version": payload.version,
@@ -109,5 +114,4 @@ def verify_base_request(base_signature: str, pack_id: str) -> BaseSignaturePaylo
             "exp": payload.exp,
         },
     )
-
     return payload

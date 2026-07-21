@@ -5,7 +5,7 @@ import unittest
 
 from services.gemini_service import GeminiInvocationPlan, PreparedReferenceInput
 from services.openai_image_service import OpenAIImageInvocationPlan
-from services.request_parser import GenerateImageRequest, UnderstandImageRequest
+from services.domain.requests import GenerateImageRequest, UnderstandImageRequest
 
 
 class LogRedactionTestCase(unittest.TestCase):

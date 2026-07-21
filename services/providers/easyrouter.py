@@ -11,7 +11,7 @@ from services.gemini_service import (
     invoke_gemini,
 )
 from services.openai_image_service import build_openai_image_invocation_plan, invoke_openai_image
-from services.request_parser import GenerateImageRequest, UnderstandImageRequest
+from services.domain.requests import GenerateImageRequest, UnderstandImageRequest
 from services.response_extractor import extract_text_from_gemini_response
 from services.response_normalizer import normalize_gemini_response
 from services.settings import AppSettings

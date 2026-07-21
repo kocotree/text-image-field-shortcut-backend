@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from services.request_parser import GenerateImageRequest, UnderstandImageRequest
+from services.domain.requests import GenerateImageRequest, UnderstandImageRequest
 from services.response_normalizer import NormalizedModelResult
 
 

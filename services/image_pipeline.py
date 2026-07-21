@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from services.http import build_asset_fetcher
 from services.oss_service import upload_asset_to_oss
-from services.request_parser import GenerateImageRequest
+from services.domain.requests import GenerateImageRequest
 from services.routing import build_failover_router
 from services.response_normalizer import NormalizedGeneratedAsset
 from services.settings import AppSettings, get_app_settings

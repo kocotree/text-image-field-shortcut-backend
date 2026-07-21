@@ -14,7 +14,7 @@ from services.domain.errors import (
     provider_error_from_status,
 )
 from services.http import build_request_timeout, get_http_client
-from services.request_parser import GenerateImageRequest, RequestValidationError
+from services.domain.requests import GenerateImageRequest, RequestValidationError
 from services.settings import HttpClientSettings
 
 logger = logging.getLogger(__name__)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from services.request_parser import UnderstandImageRequest
+from services.domain.requests import UnderstandImageRequest
 from services.routing import build_failover_router
 from services.settings import get_app_settings
 

@@ -2,60 +2,29 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timezone
 from http import HTTPStatus
-from typing import Any
 
 from io import BytesIO
 
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, request, send_file
 
-from services.domain.errors import ErrorCategory, ProviderError
+from api.auth import RequestAuthError, require_auth, verify_base_request
+from api.parsers import parse_generate_image_request, parse_understand_image_request
+from api.request_logging import (
+    build_parsed_request_summary,
+    build_request_log_summary,
+    build_result_log_summary,
+)
+from api.responses import build_json_response, provider_error_response
+from services.domain.errors import ProviderError
+from services.domain.requests import RequestValidationError
 from services.image_pipeline import generate_image_only, process_image_request
 from services.model_registry import load_provider_configuration
-from services.routing import FailoverExhaustedError, build_failover_router
+from services.routing import build_failover_router
 from services.settings import get_app_settings
 from services.understand_pipeline import process_understand_request
-from services.request_auth import RequestAuthError, verify_base_request
-from services.request_parser import RequestValidationError, parse_generate_image_request, parse_understand_image_request
-from services.kocotree_skills_auth.auth_verify import require_auth
 
 logger = logging.getLogger(__name__)
-
-
-def _provider_error_response(error: ProviderError):
-    """将服务商错误转换成稳定的客户端响应。
-
-    参数：
-        error: 路由层或服务商适配器返回的标准错误。
-
-    返回值：
-        Flask JSON 响应及对应 HTTP 状态码。
-    """
-    if isinstance(error, FailoverExhaustedError):
-        status_code = HTTPStatus.BAD_GATEWAY
-        message = "模型主服务商和兜底服务商当前均不可用，请稍后重试。"
-    elif error.category in {
-        ErrorCategory.INVALID_REQUEST,
-        ErrorCategory.INVALID_ASSET,
-        ErrorCategory.CONTENT_POLICY,
-        ErrorCategory.CAPABILITY,
-    }:
-        status_code = HTTPStatus.BAD_REQUEST
-        message = "模型请求未被服务商接受，请检查输入参数。"
-    elif error.category in {
-        ErrorCategory.CONNECTION,
-        ErrorCategory.TIMEOUT,
-        ErrorCategory.RATE_LIMIT,
-        ErrorCategory.UPSTREAM_UNAVAILABLE,
-        ErrorCategory.LOCAL_CAPACITY,
-    }:
-        status_code = HTTPStatus.SERVICE_UNAVAILABLE
-        message = "模型服务暂时不可用，请稍后重试。"
-    else:
-        status_code = HTTPStatus.BAD_GATEWAY
-        message = "模型服务调用失败，请稍后重试。"
-    return build_json_response(success=False, message=message, status_code=status_code)
 
 
 def configure_logging() -> None:
@@ -65,76 +34,6 @@ def configure_logging() -> None:
         format="[%(asctime)s] %(levelname)s in %(name)s: %(message)s",
         force=True,
     )
-
-
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def build_json_response(
-    *,
-    success: bool,
-    message: str,
-    data: dict[str, Any] | None = None,
-    status_code: int = HTTPStatus.OK,
-):
-    payload = {
-        "success": success,
-        "message": message,
-        "timestamp": utc_now_iso(),
-        "data": data or {},
-    }
-    return jsonify(payload), status_code
-
-
-def _build_request_log_summary(flask_request) -> dict[str, Any]:
-    base_signature = flask_request.headers.get("X-Base-Signature", "").strip()
-    pack_id = flask_request.headers.get("X-Pack-Id", "").strip()
-
-    return {
-        "method": flask_request.method,
-        "path": flask_request.path,
-        "contentType": flask_request.headers.get("Content-Type", ""),
-        "hasBaseSignature": bool(base_signature),
-        "baseSignatureLength": len(base_signature),
-        "packId": pack_id,
-        "fileFieldCount": len(flask_request.files),
-    }
-
-
-def _build_parsed_request_summary(normalized_request) -> dict[str, Any]:
-    return {
-        "requestId": normalized_request.request_id,
-        "promptLength": len(normalized_request.prompt or ""),
-        "model": normalized_request.model,
-        "inputType": normalized_request.input_type,
-        "fileUrlCount": len(normalized_request.file_urls),
-        "fileCount": len(normalized_request.files),
-    }
-
-
-def _build_result_log_summary(
-    *,
-    success: bool,
-    status_code: int,
-    message: str,
-    normalized_request=None,
-    result: dict[str, Any] | None = None,
-    error: Exception | None = None,
-) -> dict[str, Any]:
-    return {
-        "success": success,
-        "statusCode": int(status_code),
-        "message": message,
-        "requestId": getattr(normalized_request, "request_id", ""),
-        "model": getattr(normalized_request, "model", ""),
-        "inputType": getattr(normalized_request, "input_type", ""),
-        "ossUrl": (result or {}).get("ossUrl", ""),
-        "ossUrlCount": len((result or {}).get("ossUrls", [])),
-        "provider": (result or {}).get("provider", ""),
-        "fallbackUsed": (result or {}).get("fallbackUsed", False),
-        "errorType": type(error).__name__ if error else "",
-    }
 
 
 def create_app() -> Flask:
@@ -203,8 +102,8 @@ def create_app() -> Flask:
             logger.info(
                 "gemini.backend.request.input: %s",
                 {
-                    **_build_request_log_summary(request),
-                    **_build_parsed_request_summary(normalized_request),
+                    **build_request_log_summary(request),
+                    **build_parsed_request_summary(normalized_request),
                 },
             )
             verify_base_request(
@@ -214,7 +113,7 @@ def create_app() -> Flask:
             result = process_image_request(normalized_request)
             logger.info(
                 "gemini.backend.request.result: %s",
-                _build_result_log_summary(
+                build_result_log_summary(
                     success=True,
                     status_code=HTTPStatus.OK,
                     message="Image generated and uploaded successfully.",
@@ -231,7 +130,7 @@ def create_app() -> Flask:
         except RequestAuthError as error:
             logger.warning(
                 "gemini.backend.request.result: %s",
-                _build_result_log_summary(
+                build_result_log_summary(
                     success=False,
                     status_code=HTTPStatus.FORBIDDEN,
                     message=str(error),
@@ -247,7 +146,7 @@ def create_app() -> Flask:
         except RequestValidationError as error:
             logger.warning(
                 "gemini.backend.request.result: %s",
-                _build_result_log_summary(
+                build_result_log_summary(
                     success=False,
                     status_code=HTTPStatus.BAD_REQUEST,
                     message=str(error),
@@ -269,12 +168,12 @@ def create_app() -> Flask:
                     "requestId": getattr(normalized_request, "request_id", ""),
                 },
             )
-            return _provider_error_response(error)
+            return provider_error_response(error)
         except Exception as error:
             public_message = "内部服务错误，请稍后重试。"
             logger.error(
                 "gemini.backend.request.result: %s",
-                _build_result_log_summary(
+                build_result_log_summary(
                     success=False,
                     status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
                     message=public_message,
@@ -297,8 +196,8 @@ def create_app() -> Flask:
             logger.info(
                 "gemini.backend.generate.input: %s",
                 {
-                    **_build_request_log_summary(request),
-                    **_build_parsed_request_summary(normalized_request),
+                    **build_request_log_summary(request),
+                    **build_parsed_request_summary(normalized_request),
                 },
             )
             image_file = generate_image_only(normalized_request)
@@ -334,7 +233,7 @@ def create_app() -> Flask:
                 "gemini.backend.generate.provider_error: %s",
                 {"provider": error.provider, "category": error.category},
             )
-            return _provider_error_response(error)
+            return provider_error_response(error)
         except Exception as error:
             logger.error(
                 "gemini.backend.generate.error: %s",
@@ -357,7 +256,7 @@ def create_app() -> Flask:
             logger.info(
                 "understand.backend.request.input: %s",
                 {
-                    **_build_request_log_summary(request),
+                    **build_request_log_summary(request),
                     "requestId": normalized_request.request_id,
                     "promptLength": len(normalized_request.prompt or ""),
                     "model": normalized_request.model,
@@ -421,7 +320,7 @@ def create_app() -> Flask:
                 "understand.backend.provider_error: %s",
                 {"provider": error.provider, "category": error.category},
             )
-            return _provider_error_response(error)
+            return provider_error_response(error)
         except Exception as error:
             logger.error(
                 "understand.backend.request.result: %s",

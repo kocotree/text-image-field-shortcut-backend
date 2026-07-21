@@ -9,7 +9,7 @@ import httpx
 from services.domain.errors import ErrorCategory, ProviderError, provider_error_from_httpx
 from services.model_registry import load_model_registry
 from services.providers.openrouter import OpenRouterProvider
-from services.request_parser import GenerateImageRequest, UnderstandImageRequest
+from services.domain.requests import GenerateImageRequest, UnderstandImageRequest
 from services.settings import AppSettings, OssSettings
 
 

@@ -18,7 +18,11 @@ from services.domain.errors import (
 from services.domain.provider import ImageProviderResult, TextProviderResult
 from services.gemini_service import GeminiRawResponse
 from services.http import build_request_timeout, get_http_client
-from services.request_parser import GenerateImageRequest, UnderstandImageRequest, UploadedFileInfo
+from services.domain.requests import (
+    GenerateImageRequest,
+    UnderstandImageRequest,
+    UploadedFileInfo,
+)
 from services.response_extractor import extract_text_from_gemini_response
 from services.response_normalizer import normalize_gemini_response
 from services.settings import AppSettings

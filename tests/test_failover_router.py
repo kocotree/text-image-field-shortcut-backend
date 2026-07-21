@@ -5,7 +5,7 @@ import unittest
 from services.domain.errors import ErrorCategory, ProviderError
 from services.domain.provider import ImageProviderResult, TextProviderResult
 from services.model_registry import load_model_registry
-from services.request_parser import GenerateImageRequest, UnderstandImageRequest
+from services.domain.requests import GenerateImageRequest, UnderstandImageRequest
 from services.response_normalizer import NormalizedGeneratedAsset, NormalizedModelResult
 from services.routing import FailoverExhaustedError, FailoverRouter
 from services.routing.circuit_breaker import CircuitOpenError, CircuitState
