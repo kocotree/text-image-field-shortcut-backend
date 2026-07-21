@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
+
+import httpx
 
 from api.app import create_app
 
@@ -41,6 +44,43 @@ class ApiRoutesTestCase(unittest.TestCase):
             self.client.post("/api/understand-image", json={}).status_code,
             403,
         )
+
+    def test_auth_server_401_is_reported_as_invalid_token(self) -> None:
+        transport = httpx.MockTransport(
+            lambda _request: httpx.Response(
+                401,
+                json={"code": 401, "msg": "Token expired."},
+            )
+        )
+        with httpx.Client(transport=transport) as auth_client:
+            with patch(
+                "api.auth.access_token.get_http_client",
+                return_value=auth_client,
+            ):
+                response = self.client.get(
+                    "/health/providers",
+                    headers={"Authorization": "Bearer expired"},
+                )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json["msg"], "Token expired.")
+
+    def test_auth_server_failure_is_reported_as_unavailable(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("connection failed", request=request)
+
+        with httpx.Client(transport=httpx.MockTransport(handler)) as auth_client:
+            with patch(
+                "api.auth.access_token.get_http_client",
+                return_value=auth_client,
+            ):
+                response = self.client.get(
+                    "/health/providers",
+                    headers={"Authorization": "Bearer token"},
+                )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json["msg"], "Auth service unavailable.")
 
 
 if __name__ == "__main__":
