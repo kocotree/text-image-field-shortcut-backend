@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 from unittest.mock import patch
 
@@ -83,7 +84,7 @@ class ApiRoutesTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json["msg"], "Auth service unavailable.")
 
-    def test_successful_generation_emits_one_api_info_log(self) -> None:
+    def test_successful_generation_emits_received_and_completed_logs(self) -> None:
         generated_file = GeneratedImageFile(
             data=b"image",
             mime_type="image/png",
@@ -113,9 +114,21 @@ class ApiRoutesTestCase(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(captured.output), 1)
-        self.assertIn("api.request.completed", captured.output[0])
-        self.assertIn("'resolvedModel': 'gemini-3-pro-image'", captured.output[0])
+        self.assertEqual(len(captured.output), 2)
+        received_log, completed_log = captured.output
+        self.assertIn("api.request.received", received_log)
+        self.assertIn("'model': 'gemini-3-pro-image-preview'", received_log)
+        self.assertIn("'hasAuthorization': True", received_log)
+        self.assertNotIn("contentLength", received_log)
+        self.assertNotIn("Bearer token", received_log)
+        self.assertIn("api.request.completed", completed_log)
+        self.assertIn("'resolvedModel': 'gemini-3-pro-image'", completed_log)
+
+        received_trace_id = re.search(r"'traceId': '([^']+)'", received_log)
+        completed_trace_id = re.search(r"'traceId': '([^']+)'", completed_log)
+        self.assertIsNotNone(received_trace_id)
+        self.assertIsNotNone(completed_trace_id)
+        self.assertEqual(received_trace_id.group(1), completed_trace_id.group(1))
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from flask import Blueprint, request
 from api.auth import RequestAuthError, verify_base_request
 from api.parsers import parse_understand_image_request
 from api.request_logging import (
-    build_request_log_summary,
+    build_received_log_summary,
     build_result_log_summary,
     request_elapsed_ms,
 )
@@ -31,15 +31,9 @@ def understand_image():
     normalized_request = None
     try:
         normalized_request = parse_understand_image_request(request)
-        logger.debug(
-            "understand.backend.request.input: %s",
-            {
-                **build_request_log_summary(request),
-                "requestId": normalized_request.request_id,
-                "promptLength": len(normalized_request.prompt or ""),
-                "model": normalized_request.model,
-                "fileUrlCount": len(normalized_request.file_urls),
-            },
+        logger.info(
+            "api.request.received: %s",
+            build_received_log_summary(request, normalized_request),
         )
         verify_base_request(
             request.headers.get("X-Base-Signature", "").strip(),

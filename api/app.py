@@ -5,7 +5,7 @@ import os
 
 from flask import Flask
 
-from api.request_logging import start_request_timer
+from api.request_logging import start_request_context
 from api.routes import health_blueprint, image_blueprint, understanding_blueprint
 from services.model_registry import load_provider_configuration
 from services.settings import get_app_settings
@@ -52,7 +52,7 @@ def create_app() -> Flask:
     )
 
     app = Flask(__name__)
-    app.before_request(start_request_timer)
+    app.before_request(start_request_context)
     app.register_blueprint(health_blueprint)
     app.register_blueprint(image_blueprint)
     app.register_blueprint(understanding_blueprint)

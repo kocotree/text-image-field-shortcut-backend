@@ -9,8 +9,7 @@ from flask import Blueprint, request, send_file
 from api.auth import RequestAuthError, require_auth, verify_base_request
 from api.parsers import parse_generate_image_request
 from api.request_logging import (
-    build_parsed_request_summary,
-    build_request_log_summary,
+    build_received_log_summary,
     build_result_log_summary,
     request_elapsed_ms,
 )
@@ -33,12 +32,9 @@ def process_image():
     normalized_request = None
     try:
         normalized_request = parse_generate_image_request(request)
-        logger.debug(
-            "gemini.backend.request.input: %s",
-            {
-                **build_request_log_summary(request),
-                **build_parsed_request_summary(normalized_request),
-            },
+        logger.info(
+            "api.request.received: %s",
+            build_received_log_summary(request, normalized_request),
         )
         verify_base_request(
             request.headers.get("X-Base-Signature", "").strip(),
@@ -134,12 +130,9 @@ def generate_image():
     normalized_request = None
     try:
         normalized_request = parse_generate_image_request(request)
-        logger.debug(
-            "gemini.backend.generate.input: %s",
-            {
-                **build_request_log_summary(request),
-                **build_parsed_request_summary(normalized_request),
-            },
+        logger.info(
+            "api.request.received: %s",
+            build_received_log_summary(request, normalized_request),
         )
         image_file = generate_image_only(normalized_request)
         logger.info(

@@ -2,49 +2,69 @@ from __future__ import annotations
 
 import time
 from typing import Any
+from uuid import uuid4
 
 from flask import g, has_request_context, request
 
 
-def start_request_timer() -> None:
-    """记录当前请求开始时间。
+def start_request_context() -> None:
+    """初始化当前请求的日志上下文。
+
+    功能说明：记录请求开始时间并生成用于关联接收与完成日志的追踪编号。
 
     返回值：
         无。
     """
     g.request_started_at = time.perf_counter()
+    g.request_trace_id = uuid4().hex
 
 
 def request_elapsed_ms() -> float:
-    """读取当前请求已经消耗的毫秒数。"""
+    """读取当前请求已经消耗的毫秒数。
+
+    返回值：
+        从请求进入应用到当前节点的耗时，单位为毫秒。
+    """
     started_at = getattr(g, "request_started_at", time.perf_counter())
     return round((time.perf_counter() - started_at) * 1000, 2)
 
 
-def build_request_log_summary(flask_request: Any) -> dict[str, Any]:
-    """构建不包含签名、提示词和图片内容的请求日志摘要。"""
+def request_trace_id() -> str:
+    """读取当前请求的追踪编号。
+
+    返回值：
+        用于关联同一请求日志的追踪编号。
+    """
+    return str(getattr(g, "request_trace_id", ""))
+
+
+def build_received_log_summary(
+    flask_request: Any,
+    normalized_request: Any,
+) -> dict[str, Any]:
+    """构建不包含凭证值和请求正文的接收日志摘要。
+
+    功能说明：记录请求入口、请求模型以及认证字段是否存在，便于确认请求已进入业务接口。
+
+    参数：
+        flask_request: 当前 Flask 请求对象，用于提取接口与请求头信息。
+        normalized_request: 规范化后的业务请求对象，用于提取请求模型。
+
+    返回值：
+        可直接交给结构化日志记录器的安全字段字典。
+    """
+    authorization = flask_request.headers.get("Authorization", "").strip()
     base_signature = flask_request.headers.get("X-Base-Signature", "").strip()
     pack_id = flask_request.headers.get("X-Pack-Id", "").strip()
     return {
+        "traceId": request_trace_id(),
         "method": flask_request.method,
         "path": flask_request.path,
-        "contentType": flask_request.headers.get("Content-Type", ""),
-        "hasBaseSignature": bool(base_signature),
-        "baseSignatureLength": len(base_signature),
-        "packId": pack_id,
-        "fileFieldCount": len(flask_request.files),
-    }
-
-
-def build_parsed_request_summary(normalized_request: Any) -> dict[str, Any]:
-    """构建不包含请求正文的解析结果日志摘要。"""
-    return {
-        "requestId": normalized_request.request_id,
-        "promptLength": len(normalized_request.prompt or ""),
         "model": normalized_request.model,
-        "inputType": normalized_request.input_type,
-        "fileUrlCount": len(normalized_request.file_urls),
-        "fileCount": len(normalized_request.files),
+        "contentType": flask_request.headers.get("Content-Type", ""),
+        "hasAuthorization": bool(authorization),
+        "hasBaseSignature": bool(base_signature),
+        "hasPackId": bool(pack_id),
     }
 
 
@@ -90,6 +110,7 @@ def build_result_log_summary(
     }
     if has_request_context():
         summary = {
+            "traceId": request_trace_id(),
             "method": request.method,
             "path": request.path,
             **summary,
