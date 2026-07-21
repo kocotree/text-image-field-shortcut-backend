@@ -108,9 +108,16 @@ class FeishuAlertNotifier:
             )
             return True
         except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            status_code = (
+                exc.response.status_code
+                if isinstance(exc, httpx.HTTPStatusError)
+                else None
+            )
             logger.error(
                 "notification.feishu.send.failed: %s",
-                {"errorType": type(exc).__name__},
-                exc_info=True,
+                {
+                    "errorType": type(exc).__name__,
+                    "statusCode": status_code,
+                },
             )
             return False

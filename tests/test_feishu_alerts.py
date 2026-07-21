@@ -129,9 +129,16 @@ class FeishuAlertNotifierTestCase(unittest.TestCase):
             notifier = FeishuAlertNotifier(
                 _alert_settings(), HttpClientSettings(), client
             )
-            self.assertFalse(
-                notifier.send(AlertMessage("Critical", "发送失败", ()))
-            )
+            with self.assertLogs(
+                "services.notifications.feishu", level="ERROR"
+            ) as captured_logs:
+                self.assertFalse(
+                    notifier.send(AlertMessage("Critical", "发送失败", ()))
+                )
+
+        self.assertNotIn(
+            "https://feishu.example/hook", "\n".join(captured_logs.output)
+        )
 
 
 class RoutingEventReporterTestCase(unittest.TestCase):
