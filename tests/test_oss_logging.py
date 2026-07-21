@@ -19,7 +19,7 @@ class _FakeOssClient:
 
 
 class OssLoggingTestCase(unittest.TestCase):
-    def test_successful_upload_keeps_separate_info_log(self) -> None:
+    def test_successful_upload_does_not_emit_info_log(self) -> None:
         settings = AppSettings(
             oss=OssSettings(
                 endpoint="oss-cn-hangzhou.aliyuncs.com",
@@ -41,12 +41,9 @@ class OssLoggingTestCase(unittest.TestCase):
                 "services.oss_service.create_oss_client",
                 return_value=_FakeOssClient(),
             ),
-            self.assertLogs("services.oss_service", level="INFO") as captured,
+            self.assertNoLogs("services.oss_service", level="INFO"),
         ):
             upload_asset_to_oss(settings, asset)
-
-        self.assertEqual(len(captured.output), 1)
-        self.assertIn("gemini.backend.oss.upload.success", captured.output[0])
 
 
 if __name__ == "__main__":

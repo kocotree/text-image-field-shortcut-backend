@@ -70,7 +70,7 @@ class LogRedactionTestCase(unittest.TestCase):
 
         self.assertEqual(summary["requestedModel"], request.model)
         self.assertEqual(summary["resolvedModel"], "gemini-3-pro-image")
-        self.assertEqual(summary["elapsedMs"], 123.45)
+        self.assertEqual(summary["totalElapsedMs"], 123.45)
         self.assertEqual(summary["ossObjectCount"], 1)
         self.assertNotIn("ossUrl", summary)
 

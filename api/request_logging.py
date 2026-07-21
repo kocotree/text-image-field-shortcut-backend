@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from flask import g
+from flask import g, has_request_context, request
 
 
 def start_request_timer() -> None:
@@ -88,8 +88,14 @@ def build_result_log_summary(
         "provider": resolved_result.get("provider", ""),
         "fallbackUsed": resolved_result.get("fallbackUsed", False),
     }
+    if has_request_context():
+        summary = {
+            "method": request.method,
+            "path": request.path,
+            **summary,
+        }
     if elapsed_ms is not None:
-        summary["elapsedMs"] = elapsed_ms
+        summary["totalElapsedMs"] = elapsed_ms
     if resolved_result.get("ossUrls"):
         summary["ossObjectCount"] = len(resolved_result["ossUrls"])
     if response_bytes:

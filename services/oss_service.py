@@ -127,7 +127,7 @@ def upload_asset_to_oss(settings: AppSettings, asset: NormalizedGeneratedAsset) 
         request_id=getattr(result, "request_id", ""),
     )
 
-    logger.info(
+    logger.debug(
         "gemini.backend.oss.upload.success: %s",
         {
             "bucketName": upload_result.bucket_name,
