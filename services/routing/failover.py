@@ -115,10 +115,6 @@ class FailoverRouter:
                 if self._circuit_breaker
                 else "disabled"
             ),
-            "stateSharedAcrossWorkers": bool(
-                self._circuit_breaker
-                and self._circuit_breaker.state_shared_across_workers
-            ),
             "providers": provider_states,
         }
 

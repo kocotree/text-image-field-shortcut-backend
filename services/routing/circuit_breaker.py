@@ -43,7 +43,7 @@ class CircuitSnapshot:
 
 
 class CircuitBreaker:
-    """按服务商和能力维护当前 worker 的熔断状态。"""
+    """按服务商和能力维护应用进程内的熔断状态。"""
 
     def __init__(
         self,
@@ -62,10 +62,6 @@ class CircuitBreaker:
     @property
     def state_backend(self) -> str:
         return self._store.backend_name
-
-    @property
-    def state_shared_across_workers(self) -> bool:
-        return self._store.shared_across_workers
 
     def before_call(self, provider: str, capability: str) -> CircuitState:
         """在服务商调用前检查熔断状态。

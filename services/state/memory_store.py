@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-import os
 import threading
 import time
 from collections import deque
@@ -9,9 +7,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from services.state.base import StateStore
-
-logger = logging.getLogger(__name__)
-
 
 @dataclass(frozen=True)
 class _ExpiringValue:
@@ -24,7 +19,6 @@ class MemoryStateStore:
 
     available = True
     backend_name = "memory"
-    shared_across_workers = False
 
     def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
         """创建内存状态存储。
@@ -102,25 +96,18 @@ class MemoryStateStore:
 
 
 _factory_lock = threading.Lock()
-_store_pid: int | None = None
 _store: MemoryStateStore | None = None
 
 
 def build_state_store() -> StateStore:
-    """获取当前 worker 的路由状态存储。
+    """获取应用进程内共享的路由状态存储。
 
     返回值：
-        当前进程共享的线程安全内存状态存储；进程 fork 后自动创建独立实例。
+        应用进程内共享的线程安全内存状态存储。
     """
-    global _store_pid, _store
+    global _store
 
-    current_pid = os.getpid()
     with _factory_lock:
-        if _store is None or _store_pid != current_pid:
+        if _store is None:
             _store = MemoryStateStore()
-            _store_pid = current_pid
-            logger.info(
-                "state.memory.store_created: %s",
-                {"pid": current_pid, "sharedAcrossWorkers": False},
-            )
         return _store

@@ -6,7 +6,6 @@ from typing import Protocol
 class StateStore(Protocol):
     available: bool
     backend_name: str
-    shared_across_workers: bool
 
     def get(self, key: str) -> str | None:
         """读取字符串状态。"""
