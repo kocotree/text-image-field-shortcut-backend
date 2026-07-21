@@ -271,20 +271,20 @@ def create_app() -> Flask:
             )
             return _provider_error_response(error)
         except Exception as error:
+            public_message = "内部服务错误，请稍后重试。"
             logger.error(
                 "gemini.backend.request.result: %s",
                 _build_result_log_summary(
                     success=False,
                     status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                    message=str(error),
+                    message=public_message,
                     normalized_request=normalized_request,
                     error=error,
                 ),
             )
-            logger.debug("gemini.backend.request.exception", exc_info=True)
             return build_json_response(
                 success=False,
-                message=str(error),
+                message=public_message,
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             )
 
@@ -336,11 +336,16 @@ def create_app() -> Flask:
             )
             return _provider_error_response(error)
         except Exception as error:
-            logger.error("gemini.backend.generate.error: %s", str(error))
-            logger.debug("gemini.backend.generate.exception", exc_info=True)
+            logger.error(
+                "gemini.backend.generate.error: %s",
+                {
+                    "requestId": getattr(normalized_request, "request_id", ""),
+                    "errorType": type(error).__name__,
+                },
+            )
             return build_json_response(
                 success=False,
-                message=str(error),
+                message="内部服务错误，请稍后重试。",
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             )
 
@@ -423,14 +428,14 @@ def create_app() -> Flask:
                 {
                     "success": False,
                     "statusCode": int(HTTPStatus.INTERNAL_SERVER_ERROR),
-                    "message": str(error),
+                    "message": "内部服务错误，请稍后重试。",
                     "requestId": getattr(normalized_request, "request_id", ""),
+                    "errorType": type(error).__name__,
                 },
             )
-            logger.debug("understand.backend.request.exception", exc_info=True)
             return build_json_response(
                 success=False,
-                message=str(error),
+                message="内部服务错误，请稍后重试。",
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             )
 

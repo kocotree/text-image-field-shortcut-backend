@@ -58,11 +58,11 @@ class OpenAIImageInvocationPlan:
         return {
             "apiUrl": self.api_url,
             "model": self.model,
-            "prompt": self.prompt,
+            "promptLength": len(self.prompt),
             "size": self.size,
             "n": self.n,
             "quality": self.quality,
-            "requestBody": self.request_body,
+            "requestBodyKeys": sorted(self.request_body),
         }
 
 
@@ -194,19 +194,18 @@ def invoke_openai_image(
         )
 
         if response.status_code >= 400:
-            error_body = response_body.decode("utf-8", errors="ignore")
             logger.debug(
                 "openai_image.backend.request.http_error: %s",
                 {
                     "status": response.status_code,
                     "elapsedMs": elapsed_ms,
-                    "bodyPreview": error_body[:1000],
+                    "bodyLength": len(response_body),
                 },
             )
             raise provider_error_from_status(
                 "easyrouter",
                 response.status_code,
-                f"OpenAI Image API HTTP {response.status_code}: {error_body[:1000]}",
+                f"OpenAI Image API HTTP {response.status_code}",
                 headers=response.headers,
                 request_id=response.headers.get("x-request-id", ""),
             )

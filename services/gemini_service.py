@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import logging
 import mimetypes
 import time
@@ -104,7 +105,7 @@ class PreparedReferenceInput:
             "mimeType": self.mime_type,
             "fileName": self.file_name,
             "payloadSize": self.payload_size,
-            "preview": self.source_ref or f"inline_data:{self.mime_type}",
+            "hasSourceReference": bool(self.source_ref),
         }
 
 
@@ -122,7 +123,7 @@ class GeminiInvocationPlan:
         parts_preview = []
         for item in parts:
             if isinstance(item.get("text"), str):
-                parts_preview.append({"text": item["text"]})
+                parts_preview.append({"textLength": len(item["text"])})
                 continue
 
             inline_data = item.get("inline_data", {})
@@ -154,7 +155,7 @@ class GeminiInvocationPlan:
             "apiUrl": self.api_url,
             "apiPath": self.api_path,
             "model": self.model,
-            "prompt": self.prompt,
+            "promptLength": len(self.prompt),
             "preparedInputCount": len(self.prepared_inputs),
             "preparedInputs": [item.to_dict() for item in self.prepared_inputs],
             "requestBody": self._build_request_body_preview(),
@@ -204,7 +205,17 @@ def _read_file_as_inline_input(uploaded_file: UploadedFileInfo) -> PreparedRefer
 
 
 def _read_url_as_inline_input(file_url: str, asset_fetcher: AssetFetcher) -> PreparedReferenceInput:
-    decoded_data_url = _decode_data_url(file_url)
+    try:
+        decoded_data_url = _decode_data_url(file_url)
+    except (binascii.Error, ValueError) as exc:
+        raise ProviderError(
+            provider="easyrouter",
+            category=ErrorCategory.INVALID_ASSET,
+            message="参考图片 Data URL 无法解码。",
+            retryable=False,
+            counts_toward_circuit=False,
+            cause=exc,
+        ) from exc
     if decoded_data_url:
         mime_type, payload = decoded_data_url
         return PreparedReferenceInput(
@@ -227,7 +238,14 @@ def _read_url_as_inline_input(file_url: str, asset_fetcher: AssetFetcher) -> Pre
         payload = fetched_asset.body
         response_mime_type = fetched_asset.content_type
     except Exception as exc:
-        raise RuntimeError(f"Failed to download reference image URL: {request_url}") from exc
+        raise ProviderError(
+            provider="easyrouter",
+            category=ErrorCategory.INVALID_ASSET,
+            message="参考图片下载失败或格式不受支持。",
+            retryable=False,
+            counts_toward_circuit=False,
+            cause=exc,
+        ) from exc
 
     mime_type = response_mime_type or _guess_mime_type(fallback_name)
     file_name = _safe_file_name(fallback_name, f"reference{mimetypes.guess_extension(mime_type) or '.bin'}")
@@ -421,19 +439,18 @@ def invoke_gemini(
         )
 
         if response.status_code >= 400:
-            error_body = response_body.decode("utf-8", errors="ignore")
             logger.debug(
                 "gemini.backend.request.http_error: %s",
                 {
                     "status": response.status_code,
                     "elapsedMs": elapsed_ms,
-                    "bodyPreview": error_body[:1000],
+                    "bodyLength": len(response_body),
                 },
             )
             raise provider_error_from_status(
                 "easyrouter",
                 response.status_code,
-                f"Gemini HTTP {response.status_code}: {error_body[:1000]}",
+                f"Gemini HTTP {response.status_code}",
                 headers=response.headers,
                 request_id=response.headers.get("x-request-id", ""),
             )

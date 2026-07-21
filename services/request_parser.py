@@ -59,14 +59,13 @@ class GenerateImageRequest:
     def to_dict(self) -> dict[str, Any]:
         return {
             "requestId": self.request_id,
-            "prompt": self.prompt,
+            "promptLength": len(self.prompt),
             "model": self.model,
             "aspectRatio": self.aspect_ratio,
             "imageSize": self.image_size,
             "inputType": self.input_type,
             "fileUrlCount": len(self.file_urls),
             "fileCount": len(self.files),
-            "receivedFileUrls": self.file_urls,
             "receivedFiles": [item.to_dict() for item in self.files],
         }
 
@@ -210,10 +209,9 @@ class UnderstandImageRequest:
     def to_dict(self) -> dict[str, Any]:
         return {
             "requestId": self.request_id,
-            "prompt": self.prompt,
+            "promptLength": len(self.prompt),
             "model": self.model,
             "fileUrlCount": len(self.file_urls),
-            "receivedFileUrls": self.file_urls,
         }
 
 
