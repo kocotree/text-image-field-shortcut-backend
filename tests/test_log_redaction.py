@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 
+from api.request_logging import build_result_log_summary
 from services.gemini_service import GeminiInvocationPlan, PreparedReferenceInput
 from services.openai_image_service import OpenAIImageInvocationPlan
 from services.domain.requests import GenerateImageRequest, UnderstandImageRequest
@@ -38,6 +39,40 @@ class LogRedactionTestCase(unittest.TestCase):
 
         self.assertNotIn(prompt, serialized)
         self.assertNotIn(reference_url, serialized)
+
+    def test_completed_summary_uses_resolved_model_without_oss_url(self) -> None:
+        request = GenerateImageRequest(
+            request_id="request-3",
+            prompt="提示词",
+            model="gemini-3-pro-image-preview",
+            aspect_ratio="1:1",
+            image_size="1K",
+            input_type="empty",
+            file_urls=[],
+            files=[],
+            raw_payload={},
+        )
+
+        summary = build_result_log_summary(
+            success=True,
+            status_code=200,
+            message="ok",
+            normalized_request=request,
+            result={
+                "model": "gemini-3-pro-image",
+                "ossUrl": "https://bucket.example/private.png",
+                "ossUrls": ["https://bucket.example/private.png"],
+                "provider": "easyrouter",
+                "fallbackUsed": False,
+            },
+            elapsed_ms=123.45,
+        )
+
+        self.assertEqual(summary["requestedModel"], request.model)
+        self.assertEqual(summary["resolvedModel"], "gemini-3-pro-image")
+        self.assertEqual(summary["elapsedMs"], 123.45)
+        self.assertEqual(summary["ossObjectCount"], 1)
+        self.assertNotIn("ossUrl", summary)
 
     def test_invocation_plan_summaries_exclude_sensitive_content(self) -> None:
         prompt = "不应进入日志的提示词"

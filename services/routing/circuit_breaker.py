@@ -119,16 +119,18 @@ class CircuitBreaker:
         """
         if not self._store.available:
             return
+        snapshot = self.snapshot(provider, capability)
         self._store.delete(
             self._key(provider, capability, "snapshot"),
             self._key(provider, capability, "failures"),
             self._key(provider, capability, "open_count"),
             self._key(provider, capability, "half_open_lock"),
         )
-        logger.info(
-            "circuit.closed: %s",
-            {"provider": provider, "capability": capability},
-        )
+        if snapshot.state != CircuitState.CLOSED:
+            logger.info(
+                "circuit.closed: %s",
+                {"provider": provider, "capability": capability},
+            )
 
     def record_failure(
         self, provider: str, capability: str, error: ProviderError

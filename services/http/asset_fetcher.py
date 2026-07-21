@@ -88,7 +88,7 @@ class AssetFetcher:
         for redirect_count in range(self._max_redirects + 1):
             _validate_public_http_url(current_url)
             safe_url = _safe_url_for_log(current_url)
-            logger.info(
+            logger.debug(
                 "http.asset.download.start: %s",
                 {"url": safe_url, "redirectCount": redirect_count},
             )
@@ -120,7 +120,7 @@ class AssetFetcher:
                     detected_content_type = _detect_image_content_type(body)
                     if not detected_content_type:
                         raise AssetFetchError("资源内容不是受支持的图片格式。")
-                    logger.info(
+                    logger.debug(
                         "http.asset.download.success: %s",
                         {"url": safe_url, "size": len(body)},
                     )

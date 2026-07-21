@@ -12,6 +12,7 @@ from api.request_logging import (
     build_parsed_request_summary,
     build_request_log_summary,
     build_result_log_summary,
+    request_elapsed_ms,
 )
 from api.responses import build_json_response, provider_error_response
 from services.domain.errors import ProviderError
@@ -32,7 +33,7 @@ def process_image():
     normalized_request = None
     try:
         normalized_request = parse_generate_image_request(request)
-        logger.info(
+        logger.debug(
             "gemini.backend.request.input: %s",
             {
                 **build_request_log_summary(request),
@@ -45,13 +46,14 @@ def process_image():
         )
         result = process_image_request(normalized_request)
         logger.info(
-            "gemini.backend.request.result: %s",
+            "api.request.completed: %s",
             build_result_log_summary(
                 success=True,
                 status_code=HTTPStatus.OK,
                 message="Image generated and uploaded successfully.",
                 normalized_request=normalized_request,
                 result=result,
+                elapsed_ms=request_elapsed_ms(),
             ),
         )
         return build_json_response(
@@ -132,7 +134,7 @@ def generate_image():
     normalized_request = None
     try:
         normalized_request = parse_generate_image_request(request)
-        logger.info(
+        logger.debug(
             "gemini.backend.generate.input: %s",
             {
                 **build_request_log_summary(request),
@@ -141,16 +143,20 @@ def generate_image():
         )
         image_file = generate_image_only(normalized_request)
         logger.info(
-            "gemini.backend.generate.result: %s",
-            {
-                "success": True,
-                "requestId": normalized_request.request_id,
-                "mimeType": image_file.mime_type,
-                "fileName": image_file.file_name,
-                "size": len(image_file.data),
-                "provider": image_file.provider,
-                "fallbackUsed": image_file.fallback_used,
-            },
+            "api.request.completed: %s",
+            build_result_log_summary(
+                success=True,
+                status_code=HTTPStatus.OK,
+                message="Image generated successfully.",
+                normalized_request=normalized_request,
+                result={
+                    "model": image_file.model,
+                    "provider": image_file.provider,
+                    "fallbackUsed": image_file.fallback_used,
+                },
+                elapsed_ms=request_elapsed_ms(),
+                response_bytes=len(image_file.data),
+            ),
         )
         response = send_file(
             BytesIO(image_file.data),

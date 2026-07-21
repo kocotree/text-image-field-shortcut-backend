@@ -7,7 +7,11 @@ from flask import Blueprint, request
 
 from api.auth import RequestAuthError, verify_base_request
 from api.parsers import parse_understand_image_request
-from api.request_logging import build_request_log_summary
+from api.request_logging import (
+    build_request_log_summary,
+    build_result_log_summary,
+    request_elapsed_ms,
+)
 from api.responses import build_json_response, provider_error_response
 from services.domain.errors import ProviderError
 from services.domain.requests import RequestValidationError
@@ -27,7 +31,7 @@ def understand_image():
     normalized_request = None
     try:
         normalized_request = parse_understand_image_request(request)
-        logger.info(
+        logger.debug(
             "understand.backend.request.input: %s",
             {
                 **build_request_log_summary(request),
@@ -43,15 +47,16 @@ def understand_image():
         )
         result = process_understand_request(normalized_request)
         logger.info(
-            "understand.backend.request.result: %s",
-            {
-                "success": True,
-                "requestId": normalized_request.request_id,
-                "model": normalized_request.model,
-                "textLength": len(result.get("text", "")),
-                "provider": result.get("provider", ""),
-                "fallbackUsed": result.get("fallbackUsed", False),
-            },
+            "api.request.completed: %s",
+            build_result_log_summary(
+                success=True,
+                status_code=HTTPStatus.OK,
+                message="Image understanding completed successfully.",
+                normalized_request=normalized_request,
+                result=result,
+                elapsed_ms=request_elapsed_ms(),
+                text_length=len(result.get("text", "")),
+            ),
         )
         return build_json_response(
             success=True,

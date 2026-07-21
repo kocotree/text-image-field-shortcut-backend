@@ -140,6 +140,12 @@ class CircuitBreakerTestCase(unittest.TestCase):
         self.assertEqual(first.open_until, 1_010.0)
         self.assertEqual(second.open_until, self.now + 20)
 
+    def test_closed_circuit_success_does_not_emit_info_log(self) -> None:
+        with self.assertNoLogs(
+            "services.routing.circuit_breaker", level="INFO"
+        ):
+            self.breaker.record_success("easyrouter", "image_generation")
+
 
 if __name__ == "__main__":
     unittest.main()

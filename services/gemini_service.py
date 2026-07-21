@@ -49,7 +49,7 @@ def resolve_gemini_model_id(requested_model: str, default_model: str) -> str:
     if not stable_model:
         return resolved_model
 
-    logger.info(
+    logger.debug(
         "gemini.backend.model.compatibility_route: %s",
         {
             "requestedModel": resolved_model,
@@ -420,7 +420,7 @@ def invoke_gemini(
     )
     start_time = time.perf_counter()
 
-    logger.info(
+    logger.debug(
         "gemini.backend.request.start: %s",
         {
             "apiUrl": invocation_plan.api_url,
@@ -443,7 +443,7 @@ def invoke_gemini(
         response_body = response.content
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
-        logger.info(
+        logger.debug(
             "gemini.backend.generation_time: %s",
             {
                 "model": invocation_plan.model,

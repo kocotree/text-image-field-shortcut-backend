@@ -160,7 +160,7 @@ def invoke_openai_image(
     )
     start_time = time.perf_counter()
 
-    logger.info(
+    logger.debug(
         "openai_image.backend.request.start: %s",
         {
             "apiUrl": invocation_plan.api_url,
@@ -183,7 +183,7 @@ def invoke_openai_image(
         response_body = response.content
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
-        logger.info(
+        logger.debug(
             "openai_image.backend.generation_time: %s",
             {
                 "model": invocation_plan.model,

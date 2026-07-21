@@ -306,7 +306,7 @@ class FailoverRouter:
                     provider_error = timeout_error
                     break
                 started_at = time.perf_counter()
-                logger.info(
+                logger.debug(
                     "provider.route.attempt.start: %s",
                     {
                         "provider": provider_name,
@@ -355,7 +355,7 @@ class FailoverRouter:
                             elapsed_ms=elapsed_ms,
                         )
                     )
-                    logger.info(
+                    logger.debug(
                         "provider.route.attempt.success: %s",
                         {
                             "provider": provider_name,

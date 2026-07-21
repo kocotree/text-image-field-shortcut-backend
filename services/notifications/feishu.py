@@ -81,7 +81,7 @@ class FeishuAlertNotifier:
             "msg_type": "text",
             "content": {"text": text},
         }
-        logger.info(
+        logger.debug(
             "notification.feishu.send.start: %s",
             {"level": message.level, "title": message.title},
         )

@@ -48,6 +48,7 @@ class GeneratedImageFile:
     data: bytes
     mime_type: str
     file_name: str
+    model: str
     provider: str
     fallback_used: bool
 
@@ -83,6 +84,7 @@ def generate_image_only(request_data: GenerateImageRequest) -> GeneratedImageFil
         data=_resolve_asset_bytes(asset, settings),
         mime_type=asset.mime_type,
         file_name=asset.file_name,
+        model=provider_result.public_model,
         provider=provider_result.provider,
         fallback_used=route_result.fallback_used,
     )

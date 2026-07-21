@@ -59,7 +59,7 @@ def provider_health():
     返回值：
         已脱敏的服务商状态响应。
     """
-    logger.info("provider.health.requested")
+    logger.debug("provider.health.requested")
     return build_json_response(
         success=True,
         message="ok",

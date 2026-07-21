@@ -88,7 +88,7 @@ class HttpClientRegistry:
             if client is None:
                 client = create_http_client(settings)
                 self._clients[name] = client
-                logger.info("http.client.created: %s", {"name": name, "pid": self._pid})
+                logger.debug("http.client.created: %s", {"name": name, "pid": self._pid})
             return client
 
     def close(self) -> None:
@@ -97,7 +97,7 @@ class HttpClientRegistry:
             for name, client in self._clients.items():
                 try:
                     client.close()
-                    logger.info("http.client.closed: %s", {"name": name, "pid": self._pid})
+                    logger.debug("http.client.closed: %s", {"name": name, "pid": self._pid})
                 except Exception:
                     logger.warning("http.client.close_failed: %s", {"name": name}, exc_info=True)
             self._clients.clear()
@@ -113,7 +113,7 @@ class HttpClientRegistry:
                 logger.warning("http.client.inherited_close_failed", exc_info=True)
         self._clients.clear()
         self._pid = current_pid
-        logger.info("http.client.registry_reset_after_fork: %s", {"pid": current_pid})
+        logger.debug("http.client.registry_reset_after_fork: %s", {"pid": current_pid})
 
 
 _registry = HttpClientRegistry()

@@ -36,13 +36,13 @@ def _verify_token(auth_header: str) -> dict[str, Any]:
     ).rstrip("/")
     verify_url = f"{auth_service_url}/api/v1/auth/verify"
     client = get_http_client("auth", settings.http.auth)
-    logger.info("auth.verify.start")
+    logger.debug("auth.verify.start")
     try:
         response = client.get(
             verify_url, headers={"Authorization": auth_header}
         )
     except httpx.RequestError as exc:
-        logger.warning(
+        logger.error(
             "auth.verify.unavailable: %s",
             {"errorType": type(exc).__name__},
         )
@@ -53,7 +53,7 @@ def _verify_token(auth_header: str) -> dict[str, Any]:
         or 300 <= response.status_code < 400
         or response.status_code >= 500
     ):
-        logger.warning(
+        logger.error(
             "auth.verify.unavailable: %s",
             {"statusCode": response.status_code},
         )
@@ -63,12 +63,12 @@ def _verify_token(auth_header: str) -> dict[str, Any]:
         result = response.json()
     except (ValueError, AttributeError) as exc:
         if response.status_code in {401, 403}:
-            logger.info(
+            logger.warning(
                 "auth.verify.rejected: %s",
                 {"statusCode": response.status_code},
             )
             return {"code": response.status_code, "msg": "Invalid or expired token."}
-        logger.warning(
+        logger.error(
             "auth.verify.unavailable: %s",
             {
                 "statusCode": response.status_code,
@@ -78,19 +78,19 @@ def _verify_token(auth_header: str) -> dict[str, Any]:
         raise AuthServiceUnavailableError from exc
 
     if not isinstance(result, dict):
-        logger.warning(
+        logger.error(
             "auth.verify.unavailable: %s",
             {"statusCode": response.status_code, "errorType": "InvalidPayload"},
         )
         raise AuthServiceUnavailableError
 
     if response.status_code in {401, 403} or result.get("code") != 0:
-        logger.info(
+        logger.warning(
             "auth.verify.rejected: %s",
             {"statusCode": response.status_code, "code": result.get("code")},
         )
     else:
-        logger.info(
+        logger.debug(
             "auth.verify.success: %s",
             {"statusCode": response.status_code, "code": result.get("code")},
         )

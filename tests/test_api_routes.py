@@ -6,6 +6,7 @@ from unittest.mock import patch
 import httpx
 
 from api.app import create_app
+from services.pipelines.image import GeneratedImageFile
 
 
 class ApiRoutesTestCase(unittest.TestCase):
@@ -81,6 +82,40 @@ class ApiRoutesTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json["msg"], "Auth service unavailable.")
+
+    def test_successful_generation_emits_one_api_info_log(self) -> None:
+        generated_file = GeneratedImageFile(
+            data=b"image",
+            mime_type="image/png",
+            file_name="image.png",
+            model="gemini-3-pro-image",
+            provider="easyrouter",
+            fallback_used=False,
+        )
+        with (
+            patch(
+                "api.auth.access_token._verify_token",
+                return_value={"code": 0},
+            ),
+            patch(
+                "api.routes.image.generate_image_only",
+                return_value=generated_file,
+            ),
+            self.assertLogs("api.routes.image", level="INFO") as captured,
+        ):
+            response = self.client.post(
+                "/api/generate-image",
+                headers={"Authorization": "Bearer token"},
+                json={
+                    "prompt": "生成图片",
+                    "model": "gemini-3-pro-image-preview",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(captured.output), 1)
+        self.assertIn("api.request.completed", captured.output[0])
+        self.assertIn("'resolvedModel': 'gemini-3-pro-image'", captured.output[0])
 
 
 if __name__ == "__main__":

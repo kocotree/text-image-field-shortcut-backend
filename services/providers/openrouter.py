@@ -216,7 +216,7 @@ class OpenRouterProvider:
             )
 
         start_time = time.perf_counter()
-        logger.info(
+        logger.debug(
             "provider.openrouter.request.start: %s",
             {"path": path, "requestId": request_id, "model": body.get("model", "")},
         )
@@ -233,14 +233,14 @@ class OpenRouterProvider:
                 ),
             )
         except httpx.HTTPError as exc:
-            logger.warning(
+            logger.debug(
                 "provider.openrouter.request.failed: %s",
                 {"requestId": request_id, "errorType": type(exc).__name__},
             )
             raise provider_error_from_httpx(self.name, exc) from exc
 
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
-        logger.info(
+        logger.debug(
             "provider.openrouter.request.finish: %s",
             {
                 "path": path,
