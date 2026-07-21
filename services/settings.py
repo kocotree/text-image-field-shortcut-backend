@@ -69,6 +69,10 @@ class AppSettings:
     gpt_image_model_id: str
     oss: OssSettings
     http: HttpSettings = field(default_factory=HttpSettings)
+    provider_config_path: str = "config/providers.json"
+    fallback_enabled: bool = False
+    openrouter_api_url: str = "https://openrouter.ai/api/v1"
+    openrouter_api_key: str = ""
 
     @property
     def default_model_id(self) -> str:
@@ -148,6 +152,10 @@ def get_app_settings() -> AppSettings:
             ),
             asset_max_bytes=_read_positive_int("REFERENCE_MAX_BYTES", 52_428_800),
         ),
+        provider_config_path=os.getenv("PROVIDER_CONFIG_PATH", "config/providers.json").strip(),
+        fallback_enabled=_read_bool("FALLBACK_ENABLED", False),
+        openrouter_api_url=os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1").strip(),
+        openrouter_api_key=os.getenv("OPENROUTER_API_KEY", "").strip(),
     )
 
 

@@ -44,6 +44,10 @@
 - `REFERENCE_READ_TIMEOUT_SECONDS`（默认 `120`）
 - `REFERENCE_MAX_BYTES`（默认 `52428800`）
 - `REFERENCE_MAX_REDIRECTS`（默认 `3`）
+- `PROVIDER_CONFIG_PATH`（默认 `config/providers.json`）
+- `FALLBACK_ENABLED`（默认 `false`）
+- `OPENROUTER_API_URL`（默认 `https://openrouter.ai/api/v1`）
+- `OPENROUTER_API_KEY`
 
 说明：
 - API Key 从环境变量 `API_KEY` 读取，无需在请求头传入

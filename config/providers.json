@@ -1,0 +1,50 @@
+{
+  "primary_provider": "easyrouter",
+  "fallback_providers": ["openrouter"],
+  "providers": {
+    "easyrouter": {
+      "adapter": "easyrouter",
+      "base_url_env": "DEFAULT_API_URL",
+      "api_key_env": "DEFAULT_API_KEY"
+    },
+    "openrouter": {
+      "adapter": "openrouter",
+      "base_url_env": "OPENROUTER_API_URL",
+      "api_key_env": "OPENROUTER_API_KEY"
+    }
+  },
+  "models": {
+    "gemini-3.1-flash-image": {
+      "aliases": ["gemini-3.1-flash-image-preview"],
+      "capabilities": ["image_generation", "image_understanding", "reference_image"],
+      "providers": {
+        "easyrouter": "gemini-3.1-flash-image",
+        "openrouter": "google/gemini-3.1-flash-image"
+      }
+    },
+    "gemini-3-pro-image": {
+      "aliases": ["gemini-3-pro-image-preview"],
+      "capabilities": ["image_generation", "image_understanding", "reference_image"],
+      "providers": {
+        "easyrouter": "gemini-3-pro-image",
+        "openrouter": "google/gemini-3-pro-image"
+      }
+    },
+    "gemini-2.5-flash-image": {
+      "aliases": ["gemini-2.5-flash-image-preview"],
+      "capabilities": ["image_generation", "image_understanding", "reference_image"],
+      "providers": {
+        "easyrouter": "gemini-2.5-flash-image",
+        "openrouter": "google/gemini-2.5-flash-image"
+      }
+    },
+    "gpt-image-2": {
+      "aliases": [],
+      "capabilities": ["image_generation", "reference_image"],
+      "providers": {
+        "easyrouter": "gpt-image-2",
+        "openrouter": "openai/gpt-image-2"
+      }
+    }
+  }
+}

@@ -13,6 +13,7 @@ RUN uv sync --frozen
 
 COPY main.py ./
 COPY gunicorn.py ./
+COPY config ./config
 COPY services ./services
 
 EXPOSE 5000

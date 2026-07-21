@@ -11,6 +11,12 @@ from urllib import parse
 
 import httpx
 
+from services.domain.errors import (
+    ErrorCategory,
+    ProviderError,
+    provider_error_from_httpx,
+    provider_error_from_status,
+)
 from services.http import AssetFetcher, build_asset_fetcher, get_http_client
 from services.request_parser import GenerateImageRequest, UnderstandImageRequest
 from services.settings import AppSettings, HttpClientSettings
@@ -349,7 +355,13 @@ def invoke_gemini(
         包含响应状态、响应头和原始字节的 Gemini 响应。
     """
     if not api_key:
-        raise RuntimeError("Missing API key. Pass Authorization: Bearer <key> in request headers.")
+        raise ProviderError(
+            provider="easyrouter",
+            category=ErrorCategory.AUTHENTICATION,
+            message="EasyRouter API Key 未配置。",
+            retryable=True,
+            counts_toward_circuit=True,
+        )
 
     request_body_size = len(str(invocation_plan.request_body).encode("utf-8"))
     http_client = client or get_http_client(
@@ -410,7 +422,13 @@ def invoke_gemini(
                     "bodyPreview": error_body[:1000],
                 },
             )
-            raise RuntimeError(f"Gemini HTTP {response.status_code}: {error_body[:4000]}")
+            raise provider_error_from_status(
+                "easyrouter",
+                response.status_code,
+                f"Gemini HTTP {response.status_code}: {error_body[:1000]}",
+                headers=response.headers,
+                request_id=response.headers.get("x-request-id", ""),
+            )
 
         return GeminiRawResponse(
             status_code=response.status_code,
@@ -418,19 +436,8 @@ def invoke_gemini(
             content_disposition=response.headers.get("content-disposition", ""),
             body=response_body,
         )
-    except httpx.TimeoutException as exc:
-        elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
-        logger.debug(
-            "gemini.backend.request.timeout: %s",
-            {
-                "apiUrl": invocation_plan.api_url,
-                "model": invocation_plan.model,
-                "elapsedMs": elapsed_ms,
-                "errorType": type(exc).__name__,
-            },
-            exc_info=True,
-        )
-        raise RuntimeError(f"Gemini request timeout after {elapsed_ms}ms")
+    except ProviderError:
+        raise
     except httpx.HTTPError as exc:
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
         logger.debug(
@@ -444,7 +451,7 @@ def invoke_gemini(
             },
             exc_info=True,
         )
-        raise RuntimeError(f"Gemini request failed: {exc}")
+        raise provider_error_from_httpx("easyrouter", exc) from exc
     except Exception as exc:
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
         logger.error(
