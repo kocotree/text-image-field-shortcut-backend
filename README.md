@@ -54,9 +54,6 @@
 - `PRIMARY_MAX_ATTEMPTS`（默认 `1`）
 - `FALLBACK_MAX_ATTEMPTS`（默认 `1`）
 - `PRIMARY_EMPTY_RESPONSE_RETRY_COUNT`（默认 `1`）
-- `REDIS_URL`（未配置时关闭跨 worker 熔断状态）
-- `REDIS_KEY_NAMESPACE`（默认 `text_image_field_shortcut`）
-- `REDIS_SOCKET_TIMEOUT_SECONDS`（默认 `1`）
 - `CIRCUIT_FAILURE_THRESHOLD`（默认 `3`）
 - `CIRCUIT_OPEN_SECONDS`（默认 `60`）
 - `CIRCUIT_MAX_OPEN_SECONDS`（默认 `900`）
@@ -79,6 +76,7 @@
 说明：
 - API Key 从环境变量 `API_KEY` 读取，无需在请求头传入
 - Gemini 正式版使用 `gemini-3.1-flash-image` 和 `gemini-3-pro-image`；旧请求或环境变量中的对应 preview 模型会通过兼容映射路由到正式版
+- 熔断、兜底告警计数和通知冷却使用 Gunicorn worker 内存；各 worker 独立计数，无需额外中间件
 
 ## Docker
 构建

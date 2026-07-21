@@ -86,7 +86,7 @@ class FailoverRouter:
         """返回不包含密钥和地址的服务商路由状态。
 
         返回值：
-            包含功能开关、状态存储可用性和各服务商熔断快照的字典。
+            包含功能开关、状态范围和各服务商熔断快照的字典。
         """
         capabilities = ("image_generation", "image_understanding")
         provider_states: dict[str, object] = {}
@@ -110,6 +110,15 @@ class FailoverRouter:
             "alertEnabled": self._settings.alert.enabled,
             "stateStoreAvailable": bool(
                 self._circuit_breaker and self._circuit_breaker.state_available
+            ),
+            "stateBackend": (
+                self._circuit_breaker.state_backend
+                if self._circuit_breaker
+                else "disabled"
+            ),
+            "stateSharedAcrossWorkers": bool(
+                self._circuit_breaker
+                and self._circuit_breaker.state_shared_across_workers
             ),
             "providers": provider_states,
         }
@@ -538,8 +547,8 @@ def build_failover_router(settings: AppSettings) -> FailoverRouter:
     """
     registry = load_model_registry(settings.provider_config_path)
     providers = dict(build_provider_clients(settings, registry.configuration))
-    state_store = build_state_store(settings.state)
-    circuit_breaker = CircuitBreaker(state_store, settings.state.circuit)
+    state_store = build_state_store()
+    circuit_breaker = CircuitBreaker(state_store, settings.circuit)
     event_reporter = RoutingEventReporter(
         state_store,
         FeishuAlertNotifier(settings.alert, settings.http.notification),

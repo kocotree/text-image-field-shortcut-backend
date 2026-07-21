@@ -77,14 +77,6 @@ class CircuitBreakerSettings:
 
 
 @dataclass(frozen=True)
-class StateSettings:
-    redis_url: str = ""
-    namespace: str = "text_image_field_shortcut"
-    socket_timeout_seconds: float = 1.0
-    circuit: CircuitBreakerSettings = field(default_factory=CircuitBreakerSettings)
-
-
-@dataclass(frozen=True)
 class AlertSettings:
     enabled: bool = False
     webhook_url: str = ""
@@ -113,7 +105,7 @@ class AppSettings:
     openrouter_api_url: str = "https://openrouter.ai/api/v1"
     openrouter_api_key: str = ""
     routing: RoutingSettings = field(default_factory=RoutingSettings)
-    state: StateSettings = field(default_factory=StateSettings)
+    circuit: CircuitBreakerSettings = field(default_factory=CircuitBreakerSettings)
     alert: AlertSettings = field(default_factory=AlertSettings)
 
     @property
@@ -206,23 +198,14 @@ def get_app_settings() -> AppSettings:
                 "PRIMARY_EMPTY_RESPONSE_RETRY_COUNT", 1
             ),
         ),
-        state=StateSettings(
-            redis_url=os.getenv("REDIS_URL", "").strip(),
-            namespace=os.getenv(
-                "REDIS_KEY_NAMESPACE", "text_image_field_shortcut"
-            ).strip(),
-            socket_timeout_seconds=_read_positive_float(
-                "REDIS_SOCKET_TIMEOUT_SECONDS", 1.0
+        circuit=CircuitBreakerSettings(
+            failure_threshold=_read_positive_int("CIRCUIT_FAILURE_THRESHOLD", 3),
+            open_seconds=_read_positive_float("CIRCUIT_OPEN_SECONDS", 60.0),
+            max_open_seconds=_read_positive_float(
+                "CIRCUIT_MAX_OPEN_SECONDS", 900.0
             ),
-            circuit=CircuitBreakerSettings(
-                failure_threshold=_read_positive_int("CIRCUIT_FAILURE_THRESHOLD", 3),
-                open_seconds=_read_positive_float("CIRCUIT_OPEN_SECONDS", 60.0),
-                max_open_seconds=_read_positive_float(
-                    "CIRCUIT_MAX_OPEN_SECONDS", 900.0
-                ),
-                state_ttl_seconds=_read_positive_int(
-                    "CIRCUIT_STATE_TTL_SECONDS", 86_400
-                ),
+            state_ttl_seconds=_read_positive_int(
+                "CIRCUIT_STATE_TTL_SECONDS", 86_400
             ),
         ),
         alert=AlertSettings(
