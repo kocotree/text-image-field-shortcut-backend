@@ -2,7 +2,7 @@ bind = "0.0.0.0:5000"
 
 workers = 1
 worker_class = "gthread"
-threads = 16
+threads = 8
 
 timeout = 420
 graceful_timeout = 30
