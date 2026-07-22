@@ -23,6 +23,17 @@
 
 非敏感的服务商地址、主备顺序、默认模型、模型别名、能力和服务商模型映射统一存放在 `config/providers.json`。环境变量只保存密钥、运行开关和部署参数。
 
+### 支持模型
+
+| 公共模型 ID | 兼容别名 | EasyRouter 模型 ID | OpenRouter 模型 ID | 能力 |
+|---|---|---|---|---|
+| `gemini-3.1-flash-image` | `gemini-3.1-flash-image-preview` | `gemini-3.1-flash-image` | `google/gemini-3.1-flash-image` | 图片生成、图片理解、参考图 |
+| `gemini-3-pro-image` | `gemini-3-pro-image-preview` | `gemini-3-pro-image` | `google/gemini-3-pro-image` | 图片生成、图片理解、参考图 |
+| `gemini-2.5-flash-image`（Nano Banana） | `gemini-2.5-flash-image-preview` | `gemini-2.5-flash-image` | `google/gemini-2.5-flash-image` | 图片生成、图片理解、参考图 |
+| `gpt-image-2` | - | `gpt-image-2` | `openai/gpt-image-2` | 图片生成 |
+
+默认模型为 `gemini-3.1-flash-image`。客户端传入 preview 兼容别名时，会解析为对应的公共模型 ID，再映射到实际服务商模型 ID。
+
 推荐生产环境配置：
 
 ```dotenv
@@ -47,18 +58,7 @@ FEISHU_ALERT_SECRET=
 
 使用 STS 临时凭证访问 OSS 时增加 `OSS_SESSION_TOKEN`。`FEISHU_ALERT_ENABLED=true` 时必须同时配置 Webhook 和签名密钥。
 
-以下参数已有默认值，仅在部署环境需要覆盖时配置：
-
-- 服务商请求：`PROVIDER_CONNECT_TIMEOUT_SECONDS`、`PROVIDER_READ_TIMEOUT_SECONDS`、`PROVIDER_WRITE_TIMEOUT_SECONDS`、`PROVIDER_POOL_TIMEOUT_SECONDS`
-- 连接池：`HTTP_MAX_CONNECTIONS`、`HTTP_MAX_KEEPALIVE_CONNECTIONS`、`HTTP_TRUST_ENV`
-- 资源下载：`REFERENCE_CONNECT_TIMEOUT_SECONDS`、`REFERENCE_READ_TIMEOUT_SECONDS`、`REFERENCE_MAX_BYTES`、`REFERENCE_MAX_REDIRECTS`
-- 鉴权超时：`AUTH_VERIFY_CONNECT_TIMEOUT_SECONDS`、`AUTH_VERIFY_READ_TIMEOUT_SECONDS`、`AUTH_VERIFY_POOL_TIMEOUT_SECONDS`
-- 路由策略：`MODEL_REQUEST_DEADLINE_SECONDS`、`PRIMARY_MAX_ATTEMPTS`、`FALLBACK_MAX_ATTEMPTS`、`PRIMARY_EMPTY_RESPONSE_RETRY_COUNT`
-- 熔断策略：`CIRCUIT_FAILURE_THRESHOLD`、`CIRCUIT_OPEN_SECONDS`、`CIRCUIT_MAX_OPEN_SECONDS`、`CIRCUIT_STATE_TTL_SECONDS`
-- 告警策略：`SERVICE_NAME`、`FALLBACK_ALERT_WINDOW_SECONDS`、`FALLBACK_ALERT_THRESHOLD`、`FALLBACK_ALERT_COOLDOWN_SECONDS`、`CRITICAL_ALERT_COOLDOWN_SECONDS`、`PRIMARY_RECOVERY_SUCCESS_THRESHOLD`、`ALERT_INCIDENT_TTL_SECONDS`
-- 飞书超时：`FEISHU_CONNECT_TIMEOUT_SECONDS`、`FEISHU_READ_TIMEOUT_SECONDS`、`FEISHU_POOL_TIMEOUT_SECONDS`
-
-Gemini 正式模型和 preview 兼容别名由 `providers.json` 管理。熔断、兜底告警计数和通知冷却使用 Gunicorn worker 内存，各 worker 独立计数，不需要额外中间件。
+熔断、兜底告警计数和通知冷却使用应用进程内的线程安全内存。Gunicorn 以单 worker、多线程方式运行，不需要额外的状态中间件；应用进程重启后状态会清空。
 
 ## Docker
 构建

@@ -16,6 +16,17 @@
 - 服务端会先对 `X-Base-Signature` 验签，再校验签名中的 `packID` 与 `X-Pack-Id` 一致
 - GPT Image 链路不支持参考图（fileUrl/fileUrls/files），传入会返回 400
 
+## 支持模型
+
+| 公共模型 ID | 兼容别名 | EasyRouter 模型 ID | OpenRouter 模型 ID | 能力 |
+|---|---|---|---|---|
+| `gemini-3.1-flash-image` | `gemini-3.1-flash-image-preview` | `gemini-3.1-flash-image` | `google/gemini-3.1-flash-image` | 图片生成、图片理解、参考图 |
+| `gemini-3-pro-image` | `gemini-3-pro-image-preview` | `gemini-3-pro-image` | `google/gemini-3-pro-image` | 图片生成、图片理解、参考图 |
+| `gemini-2.5-flash-image`（Nano Banana） | `gemini-2.5-flash-image-preview` | `gemini-2.5-flash-image` | `google/gemini-2.5-flash-image` | 图片生成、图片理解、参考图 |
+| `gpt-image-2` | - | `gpt-image-2` | `openai/gpt-image-2` | 图片生成 |
+
+默认模型为 `gemini-3.1-flash-image`。preview 兼容别名会解析为对应的公共模型 ID，再映射到实际服务商模型 ID。
+
 ## 前端可传参数约定
 
 ### 通用参数
