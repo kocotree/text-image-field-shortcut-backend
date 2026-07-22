@@ -44,6 +44,24 @@ class ModelRegistryTestCase(unittest.TestCase):
             "https://easyrouter.io",
         )
 
+    def test_gemini_2_5_flash_image_routes_to_provider_models(self) -> None:
+        registry = load_model_registry("config/providers.json")
+
+        public_model = registry.resolve("gemini-2.5-flash-image-preview")
+
+        self.assertEqual(public_model, "gemini-2.5-flash-image")
+        self.assertEqual(
+            registry.provider_model(public_model, "easyrouter"),
+            "gemini-2.5-flash-image",
+        )
+        self.assertEqual(
+            registry.provider_model(public_model, "openrouter"),
+            "google/gemini-2.5-flash-image",
+        )
+        self.assertTrue(registry.supports(public_model, "image_generation"))
+        self.assertTrue(registry.supports(public_model, "image_understanding"))
+        self.assertTrue(registry.supports(public_model, "reference_image"))
+
     def test_invalid_duplicate_alias_is_rejected(self) -> None:
         config_path = Path("tests/.provider-config-invalid.json")
         config_path.write_text(

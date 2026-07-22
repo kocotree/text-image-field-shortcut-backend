@@ -31,6 +31,14 @@
         "openrouter": "google/gemini-3-pro-image"
       }
     },
+    "gemini-2.5-flash-image": {
+      "aliases": ["gemini-2.5-flash-image-preview"],
+      "capabilities": ["image_generation", "image_understanding", "reference_image"],
+      "providers": {
+        "easyrouter": "gemini-2.5-flash-image",
+        "openrouter": "google/gemini-2.5-flash-image"
+      }
+    },
     "gpt-image-2": {
       "aliases": [],
       "capabilities": ["image_generation", "reference_image"],
