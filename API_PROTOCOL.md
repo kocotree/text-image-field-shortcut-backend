@@ -167,7 +167,8 @@ GPT Image 2 示例：
 
 ### `POST /api/process-image`
 
-生成图片后上传到 OSS，返回 JSON：
+生成图片后将全部图片按响应顺序上传到 OSS，并返回 JSON。`ossUrls`
+包含全部图片地址，`ossUrl` 指向第一张图片：
 
 ```json
 {
@@ -179,7 +180,8 @@ GPT Image 2 示例：
     "model": "gemini-model-id-from-env",
     "ossUrl": "https://your-bucket.oss-cn-hangzhou.aliyuncs.com/path/to/file.png",
     "ossUrls": [
-      "https://your-bucket.oss-cn-hangzhou.aliyuncs.com/path/to/file-1.png"
+      "https://your-bucket.oss-cn-hangzhou.aliyuncs.com/path/to/file-1.png",
+      "https://your-bucket.oss-cn-hangzhou.aliyuncs.com/path/to/file-2.png"
     ],
     "provider": "easyrouter",
     "fallbackUsed": false

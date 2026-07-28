@@ -29,10 +29,46 @@ def process_image_request(
     provider_result = route_result.provider_result
     normalized_result = provider_result.result
 
-    upload_results = [
-        upload_asset_to_oss(settings, asset) for asset in normalized_result.assets
-    ]
+    logger.info(
+        "image.process.upload.start: %s",
+        {
+            "requestId": request_data.request_id,
+            "assetCount": len(normalized_result.assets),
+        },
+    )
+    upload_results = []
+    for index, asset in enumerate(normalized_result.assets):
+        try:
+            upload_result = upload_asset_to_oss(settings, asset)
+        except Exception:
+            logger.exception(
+                "image.process.upload.failed: %s",
+                {
+                    "requestId": request_data.request_id,
+                    "assetIndex": index,
+                    "assetCount": len(normalized_result.assets),
+                },
+            )
+            raise
+        upload_results.append(upload_result)
+        logger.info(
+            "image.process.upload.completed: %s",
+            {
+                "requestId": request_data.request_id,
+                "assetIndex": index,
+                "assetCount": len(normalized_result.assets),
+                "objectKey": upload_result.object_key,
+            },
+        )
     oss_urls = [item.object_url for item in upload_results]
+    logger.info(
+        "image.process.completed: %s",
+        {
+            "requestId": request_data.request_id,
+            "assetCount": len(normalized_result.assets),
+            "ossObjectCount": len(oss_urls),
+        },
+    )
     return {
         "requestId": request_data.request_id,
         "model": provider_result.public_model,
@@ -58,9 +94,7 @@ def _resolve_asset_bytes(
 ) -> bytes:
     if asset.source_kind == "bytes":
         return (
-            asset.payload
-            if isinstance(asset.payload, bytes)
-            else bytes(asset.payload)
+            asset.payload if isinstance(asset.payload, bytes) else bytes(asset.payload)
         )
     if asset.source_kind == "url":
         return build_asset_fetcher(settings).fetch(str(asset.payload)).body
