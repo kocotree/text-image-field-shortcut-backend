@@ -272,7 +272,7 @@ def normalize_gemini_response(raw_response: GeminiRawResponse) -> NormalizedMode
                 text_output="",
                 raw_meta=raw_meta,
             )
-            logger.info(
+            logger.debug(
                 "image.response.normalized: %s",
                 {
                     "rawResponseType": result.raw_response_type,
@@ -301,7 +301,7 @@ def normalize_gemini_response(raw_response: GeminiRawResponse) -> NormalizedMode
                 text_output="",
                 raw_meta=raw_meta,
             )
-            logger.info(
+            logger.debug(
                 "image.response.normalized: %s",
                 {
                     "rawResponseType": result.raw_response_type,
@@ -331,7 +331,7 @@ def normalize_gemini_response(raw_response: GeminiRawResponse) -> NormalizedMode
                 text_output=assistant_text,
                 raw_meta=raw_meta,
             )
-            logger.info(
+            logger.debug(
                 "image.response.normalized: %s",
                 {
                     "rawResponseType": result.raw_response_type,
@@ -376,7 +376,7 @@ def normalize_gemini_response(raw_response: GeminiRawResponse) -> NormalizedMode
             text_output=response_text,
             raw_meta=raw_meta,
         )
-        logger.info(
+        logger.debug(
             "image.response.normalized: %s",
             {
                 "rawResponseType": result.raw_response_type,

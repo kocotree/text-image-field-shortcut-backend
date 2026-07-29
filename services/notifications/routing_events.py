@@ -101,7 +101,7 @@ class RoutingEventReporter:
             count = self._store.record_event(
                 event_key, self._settings.fallback_window_seconds
             )
-            logger.warning(
+            logger.debug(
                 "notification.routing.fallback_recorded: %s",
                 {
                     "primaryProvider": primary_provider,

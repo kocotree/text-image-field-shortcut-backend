@@ -62,7 +62,11 @@ class MultiImageResponseNormalizerTestCase(unittest.TestCase):
             }
         )
 
-        result = normalize_gemini_response(raw_response)
+        with self.assertNoLogs(
+            "services.response_normalizer",
+            level="INFO",
+        ):
+            result = normalize_gemini_response(raw_response)
 
         self.assertEqual(result.raw_response_type, "json_base64")
         self.assertEqual(
@@ -88,7 +92,11 @@ class MultiImageResponseNormalizerTestCase(unittest.TestCase):
             }
         )
 
-        result = normalize_gemini_response(raw_response)
+        with self.assertNoLogs(
+            "services.response_normalizer",
+            level="INFO",
+        ):
+            result = normalize_gemini_response(raw_response)
 
         self.assertEqual(result.raw_response_type, "json_url")
         self.assertEqual(
@@ -171,7 +179,11 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
             ),
         ]
 
-        result = process_image_request(request_data)
+        with self.assertNoLogs(
+            "services.pipelines.image",
+            level="INFO",
+        ):
+            result = process_image_request(request_data)
 
         self.assertEqual(
             build_failover_router.return_value.generate_image.call_count,

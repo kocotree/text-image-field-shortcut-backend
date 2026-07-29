@@ -65,7 +65,7 @@ def _generate_batch_item(
     返回值：
         包含单张图片及其路由信息的批次结果。
     """
-    logger.info(
+    logger.debug(
         "image.process.generation.item.start: %s",
         {
             "requestId": request_data.request_id,
@@ -100,7 +100,7 @@ def _generate_batch_item(
         provider=provider_result.provider,
         fallback_used=route_result.fallback_used,
     )
-    logger.info(
+    logger.debug(
         "image.process.generation.item.completed: %s",
         {
             "requestId": request_data.request_id,
@@ -138,7 +138,7 @@ def _generate_batch(
         prepared_request.image_count,
         settings.image_generation.max_concurrency,
     )
-    logger.info(
+    logger.debug(
         "image.process.generation.batch.start: %s",
         {
             "requestId": prepared_request.request_id,
@@ -172,20 +172,21 @@ def _generate_batch(
                     ordered_results[index] = future.result()
             except Exception:
                 failed_index = future_indexes.get(future, -1)
-                logger.exception(
+                logger.debug(
                     "image.process.generation.item.failed: %s",
                     {
                         "requestId": prepared_request.request_id,
                         "imageIndex": failed_index,
                         "requestedCount": prepared_request.image_count,
                     },
+                    exc_info=True,
                 )
                 for pending_future in future_indexes:
                     pending_future.cancel()
                 raise
         results = [item for item in ordered_results if item is not None]
 
-    logger.info(
+    logger.debug(
         "image.process.generation.batch.completed: %s",
         {
             "requestId": prepared_request.request_id,
@@ -210,7 +211,7 @@ def process_image_request(
     settings = get_app_settings()
     generated_items = _generate_batch(request_data, settings)
 
-    logger.info(
+    logger.debug(
         "image.process.upload.start: %s",
         {
             "requestId": request_data.request_id,
@@ -232,7 +233,7 @@ def process_image_request(
             )
             raise
         upload_results.append(upload_result)
-        logger.info(
+        logger.debug(
             "image.process.upload.completed: %s",
             {
                 "requestId": request_data.request_id,
@@ -245,7 +246,7 @@ def process_image_request(
     providers = {item.provider for item in generated_items}
     provider = generated_items[0].provider if len(providers) == 1 else "mixed"
     fallback_used = any(item.fallback_used for item in generated_items)
-    logger.info(
+    logger.debug(
         "image.process.completed: %s",
         {
             "requestId": request_data.request_id,
