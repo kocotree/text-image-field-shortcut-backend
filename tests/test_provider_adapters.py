@@ -143,6 +143,7 @@ class OpenRouterProviderTestCase(unittest.TestCase):
         self.assertIsNotNone(captured_request)
         payload = json.loads(captured_request.content)
         self.assertEqual(captured_request.url.path, "/api/v1/images")
+        self.assertEqual(payload["n"], 1)
         self.assertEqual(payload["resolution"], "2K")
         self.assertEqual(payload["aspect_ratio"], "16:9")
         self.assertEqual(

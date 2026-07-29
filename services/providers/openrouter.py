@@ -31,10 +31,13 @@ logger = logging.getLogger(__name__)
 
 
 def _read_uploaded_file_as_data_url(uploaded_file: UploadedFileInfo) -> str:
-    storage = uploaded_file.storage
-    storage.stream.seek(0)
-    body = storage.read()
-    storage.stream.seek(0)
+    if uploaded_file.content is not None:
+        body = uploaded_file.content
+    else:
+        storage = uploaded_file.storage
+        storage.stream.seek(0)
+        body = storage.read()
+        storage.stream.seek(0)
     mime_type = uploaded_file.content_type or mimetypes.guess_type(uploaded_file.file_name)[0] or "image/png"
     return f"data:{mime_type};base64,{base64.b64encode(body).decode('ascii')}"
 

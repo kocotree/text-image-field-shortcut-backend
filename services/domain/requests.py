@@ -15,6 +15,7 @@ class UploadedFileInfo:
     content_type: str
     content_length: int
     storage: Any
+    content: bytes | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -36,6 +37,7 @@ class GenerateImageRequest:
     file_urls: list[str]
     files: list[UploadedFileInfo]
     raw_payload: dict[str, Any]
+    image_count: int = 1
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -44,6 +46,7 @@ class GenerateImageRequest:
             "model": self.model,
             "aspectRatio": self.aspect_ratio,
             "imageSize": self.image_size,
+            "imageCount": self.image_count,
             "inputType": self.input_type,
             "fileUrlCount": len(self.file_urls),
             "fileCount": len(self.files),

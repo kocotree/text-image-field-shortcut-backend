@@ -69,6 +69,12 @@ class RoutingSettings:
 
 
 @dataclass(frozen=True)
+class ImageGenerationSettings:
+    max_count: int = 4
+    max_concurrency: int = 4
+
+
+@dataclass(frozen=True)
 class CircuitBreakerSettings:
     failure_threshold: int = 3
     open_seconds: float = 60.0
@@ -98,6 +104,9 @@ class AppSettings:
     provider_config_path: str = "config/providers.json"
     fallback_enabled: bool = False
     routing: RoutingSettings = field(default_factory=RoutingSettings)
+    image_generation: ImageGenerationSettings = field(
+        default_factory=ImageGenerationSettings
+    )
     circuit: CircuitBreakerSettings = field(default_factory=CircuitBreakerSettings)
     alert: AlertSettings = field(default_factory=AlertSettings)
 
@@ -176,6 +185,12 @@ def get_app_settings() -> AppSettings:
             fallback_max_attempts=_read_positive_int("FALLBACK_MAX_ATTEMPTS", 1),
             primary_empty_response_retry_count=_read_non_negative_int(
                 "PRIMARY_EMPTY_RESPONSE_RETRY_COUNT", 1
+            ),
+        ),
+        image_generation=ImageGenerationSettings(
+            max_count=_read_positive_int("IMAGE_GENERATION_MAX_COUNT", 4),
+            max_concurrency=_read_positive_int(
+                "IMAGE_GENERATION_MAX_CONCURRENCY", 4
             ),
         ),
         circuit=CircuitBreakerSettings(

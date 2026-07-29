@@ -190,10 +190,13 @@ def _build_endpoint(api_url: str, api_path: str) -> str:
 
 
 def _read_file_as_inline_input(uploaded_file: UploadedFileInfo) -> PreparedReferenceInput:
-    storage = uploaded_file.storage
-    storage.stream.seek(0)
-    file_bytes = storage.read()
-    storage.stream.seek(0)
+    if uploaded_file.content is not None:
+        file_bytes = uploaded_file.content
+    else:
+        storage = uploaded_file.storage
+        storage.stream.seek(0)
+        file_bytes = storage.read()
+        storage.stream.seek(0)
     mime_type = uploaded_file.content_type or _guess_mime_type(uploaded_file.file_name)
     return PreparedReferenceInput(
         source_type="file_stream",

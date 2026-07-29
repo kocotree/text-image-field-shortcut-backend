@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import base64
 import json
+import threading
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from flask import Flask, request
+
+from api.parsers import parse_generate_image_request
 from services.domain.requests import GenerateImageRequest
 from services.gemini_service import GeminiRawResponse
-from services.pipelines.image import process_image_request
+from services.pipelines.image import generate_image_only, process_image_request
 from services.response_normalizer import (
     NormalizedGeneratedAsset,
     NormalizedModelResult,
@@ -108,7 +112,7 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
     ) -> None:
         request_data = GenerateImageRequest(
             request_id="request-1",
-            prompt="生成两张图片",
+            prompt="生成图片",
             model="gemini-3.1-flash-image",
             aspect_ratio="1:1",
             image_size="1K",
@@ -116,9 +120,10 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
             file_urls=[],
             files=[],
             raw_payload={},
+            image_count=2,
         )
-        assets = [
-            NormalizedGeneratedAsset(
+        assets = {
+            index: NormalizedGeneratedAsset(
                 asset_type="image_base64",
                 mime_type="image/png",
                 file_name=f"generated-output-{index + 1}.png",
@@ -126,23 +131,35 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
                 payload=payload,
             )
             for index, payload in enumerate((b"first", b"second"))
-        ]
-        provider_result = SimpleNamespace(
-            public_model="gemini-3.1-flash-image",
-            provider="easyrouter",
-            result=NormalizedModelResult(
-                raw_response_type="json_base64",
-                assets=assets,
-                text_output="",
-                raw_meta={},
-            ),
-        )
-        build_failover_router.return_value.generate_image.return_value = (
-            SimpleNamespace(
+        }
+        started = threading.Barrier(2)
+
+        def generate_image(item_request):
+            item_index = int(item_request.request_id.rsplit(":", 1)[1]) - 1
+            started.wait(timeout=1)
+            provider_result = SimpleNamespace(
+                public_model="gemini-3.1-flash-image",
+                provider="easyrouter",
+                result=NormalizedModelResult(
+                    raw_response_type="json_base64",
+                    assets=[assets[item_index]],
+                    text_output="",
+                    raw_meta={},
+                ),
+            )
+            return SimpleNamespace(
                 provider_result=provider_result,
                 fallback_used=False,
             )
+
+        settings = SimpleNamespace(
+            image_generation=SimpleNamespace(
+                max_count=4,
+                max_concurrency=4,
+            )
         )
+        get_app_settings.return_value = settings
+        build_failover_router.return_value.generate_image.side_effect = generate_image
         upload_asset_to_oss.side_effect = [
             SimpleNamespace(
                 object_key="images/first.png",
@@ -156,7 +173,13 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
 
         result = process_image_request(request_data)
 
+        self.assertEqual(
+            build_failover_router.return_value.generate_image.call_count,
+            2,
+        )
         self.assertEqual(upload_asset_to_oss.call_count, 2)
+        self.assertEqual(result["requestedCount"], 2)
+        self.assertEqual(result["generatedCount"], 2)
         self.assertEqual(
             result["ossUrls"],
             [
@@ -169,6 +192,92 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
             "https://bucket.example/images/first.png",
         )
         get_app_settings.assert_called_once_with()
+
+    @patch("services.pipelines.image.get_app_settings")
+    def test_rejects_image_count_over_configured_limit(
+        self,
+        get_app_settings,
+    ) -> None:
+        request_data = GenerateImageRequest(
+            request_id="request-2",
+            prompt="生成图片",
+            model="gemini-3.1-flash-image",
+            aspect_ratio="1:1",
+            image_size="1K",
+            input_type="empty",
+            file_urls=[],
+            files=[],
+            raw_payload={},
+            image_count=5,
+        )
+        get_app_settings.return_value = SimpleNamespace(
+            image_generation=SimpleNamespace(
+                max_count=4,
+                max_concurrency=4,
+            )
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "imageCount must be between 1 and 4",
+        ):
+            process_image_request(request_data)
+
+    def test_binary_endpoint_rejects_multi_image_request(self) -> None:
+        request_data = GenerateImageRequest(
+            request_id="request-3",
+            prompt="生成图片",
+            model="gemini-3.1-flash-image",
+            aspect_ratio="1:1",
+            image_size="1K",
+            input_type="empty",
+            file_urls=[],
+            files=[],
+            raw_payload={},
+            image_count=2,
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "only supported by /api/process-image",
+        ):
+            generate_image_only(request_data)
+
+
+class MultiImageRequestParserTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        self.app = Flask(__name__)
+
+    def test_parses_json_image_count(self) -> None:
+        with self.app.test_request_context(
+            json={
+                "prompt": "生成图片",
+                "imageCount": 3,
+            }
+        ):
+            parsed = parse_generate_image_request(request)
+
+        self.assertEqual(parsed.image_count, 3)
+        self.assertEqual(parsed.to_dict()["imageCount"], 3)
+
+    def test_defaults_image_count_to_one(self) -> None:
+        with self.app.test_request_context(json={"prompt": "生成图片"}):
+            parsed = parse_generate_image_request(request)
+
+        self.assertEqual(parsed.image_count, 1)
+
+    def test_rejects_non_positive_image_count(self) -> None:
+        with self.app.test_request_context(
+            json={
+                "prompt": "生成图片",
+                "imageCount": 0,
+            }
+        ):
+            with self.assertRaisesRegex(
+                ValueError,
+                "imageCount must be a positive integer",
+            ):
+                parse_generate_image_request(request)
 
 
 if __name__ == "__main__":

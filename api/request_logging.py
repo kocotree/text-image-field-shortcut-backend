@@ -56,7 +56,7 @@ def build_received_log_summary(
     authorization = flask_request.headers.get("Authorization", "").strip()
     base_signature = flask_request.headers.get("X-Base-Signature", "").strip()
     pack_id = flask_request.headers.get("X-Pack-Id", "").strip()
-    return {
+    summary = {
         "traceId": request_trace_id(),
         "method": flask_request.method,
         "path": flask_request.path,
@@ -66,6 +66,9 @@ def build_received_log_summary(
         "hasBaseSignature": bool(base_signature),
         "hasPackId": bool(pack_id),
     }
+    if hasattr(normalized_request, "image_count"):
+        summary["requestedCount"] = normalized_request.image_count
+    return summary
 
 
 def build_result_log_summary(
@@ -108,6 +111,12 @@ def build_result_log_summary(
         "provider": resolved_result.get("provider", ""),
         "fallbackUsed": resolved_result.get("fallbackUsed", False),
     }
+    if "requestedCount" in resolved_result:
+        summary["requestedCount"] = resolved_result["requestedCount"]
+    elif hasattr(normalized_request, "image_count"):
+        summary["requestedCount"] = normalized_request.image_count
+    if "generatedCount" in resolved_result:
+        summary["generatedCount"] = resolved_result["generatedCount"]
     if has_request_context():
         summary = {
             "traceId": request_trace_id(),

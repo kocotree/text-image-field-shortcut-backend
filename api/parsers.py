@@ -26,6 +26,7 @@ SUPPORTED_ASPECT_RATIOS = (
     "21:9",
 )
 DEFAULT_IMAGE_SIZE = "1K"
+DEFAULT_IMAGE_COUNT = 1
 MAX_REFERENCE_IMAGE_COUNT = 14
 
 
@@ -74,6 +75,30 @@ def _normalize_aspect_ratio(value: Any) -> str:
             f"Supported values: {', '.join(SUPPORTED_ASPECT_RATIOS)}."
         )
     return normalized
+
+
+def _normalize_image_count(value: Any) -> int:
+    """解析客户端请求的图片数量。
+
+    参数：
+        value: JSON 或表单中读取到的原始图片数量。
+
+    返回值：
+        大于零的整数图片数量；未传入时返回默认值。
+    """
+    if value is None or value == "":
+        return DEFAULT_IMAGE_COUNT
+    if isinstance(value, bool):
+        raise RequestValidationError("imageCount must be a positive integer.")
+    if isinstance(value, int):
+        image_count = value
+    elif isinstance(value, str) and value.strip().isdigit():
+        image_count = int(value.strip())
+    else:
+        raise RequestValidationError("imageCount must be a positive integer.")
+    if image_count <= 0:
+        raise RequestValidationError("imageCount must be a positive integer.")
+    return image_count
 
 
 def _validate_reference_count(
@@ -142,6 +167,11 @@ def parse_generate_image_request(flask_request: Any) -> GenerateImageRequest:
         if is_json_request
         else form_data.get("aspectRatio")
     )
+    raw_image_count = (
+        payload.get("imageCount")
+        if is_json_request
+        else form_data.get("imageCount")
+    )
     parsed_request = GenerateImageRequest(
         request_id=_resolve_request_value(
             is_json_request, payload, form_data, "requestId"
@@ -164,6 +194,7 @@ def parse_generate_image_request(flask_request: Any) -> GenerateImageRequest:
         file_urls=file_urls,
         files=files,
         raw_payload=payload if is_json_request else form_data.to_dict(flat=False),
+        image_count=_normalize_image_count(raw_image_count),
     )
     logger.debug(
         "api.request.generate.parsed: %s",

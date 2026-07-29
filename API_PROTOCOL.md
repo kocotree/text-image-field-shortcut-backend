@@ -15,6 +15,8 @@
 - 请求来源校验依赖两个请求头：`X-Base-Signature` 和 `X-Pack-Id`
 - 服务端会先对 `X-Base-Signature` 验签，再校验签名中的 `packID` 与 `X-Pack-Id` 一致
 - GPT Image 链路不支持参考图（fileUrl/fileUrls/files），传入会返回 400
+- `/api/process-image` 支持通过 `imageCount` 并发生成多张图片
+- `/api/generate-image` 返回单个图片文件，仅支持 `imageCount=1`
 
 ## 支持模型
 
@@ -37,6 +39,7 @@
 | `model` | string | 否 | `providers.json` 默认模型 | 以 `gpt-image` 开头走 GPT Image，否则走 Gemini |
 | `aspectRatio` | string | 否 | 不填 | 输出图片比例 |
 | `requestId` | string | 否 | `""` | 请求追踪 ID |
+| `imageCount` | integer | 否 | `1` | `/api/process-image` 的图片数量，默认范围 `1～4` |
 
 ### Gemini 专属参数
 
@@ -114,6 +117,7 @@ Gemini 示例：
   "model": "gemini-3.1-flash-image",
   "aspectRatio": "16:9",
   "imageSize": "2K",
+  "imageCount": 2,
   "fileUrl": "https://example.com/reference-1.png",
   "fileUrls": [
     "https://example.com/reference-2.png"
@@ -137,6 +141,8 @@ GPT Image 2 示例：
 - `model` 以 `gpt-image` 开头时走 GPT Image 链路
 - `aspectRatio` 不传或传空时，Gemini 保持模型默认行为，GPT Image 使用 `auto`
 - `imageSize` 不传时默认 `1K`（仅 Gemini 使用）
+- `imageCount` 不传时默认 `1`；多图请求仅支持 `/api/process-image`
+- `imageCount > 1` 时，服务端为每张图片并发发起一次单图生成请求
 
 ### 方式 2：multipart/form-data + 文件流
 
@@ -150,6 +156,7 @@ GPT Image 2 示例：
 - `model`
 - `aspectRatio`
 - `imageSize`
+- `imageCount`
 - `file`
 - `files`
 
@@ -160,15 +167,17 @@ GPT Image 2 示例：
 - `model` 以 `gpt-image` 开头时走 GPT Image 链路
 - `aspectRatio` 不传或传空时，Gemini 保持模型默认行为，GPT Image 使用 `auto`
 - `imageSize` 不传时默认 `1K`（仅 Gemini 使用）
+- `imageCount` 不传时默认 `1`；多图请求仅支持 `/api/process-image`
 
 ## 返回格式
 
-两个接口的请求参数完全一致，区别在于返回方式。
+两个接口共用基础图片参数。`imageCount > 1` 仅适用于
+`/api/process-image`，`/api/generate-image` 始终返回单个图片文件。
 
 ### `POST /api/process-image`
 
-生成图片后将全部图片按响应顺序上传到 OSS，并返回 JSON。`ossUrls`
-包含全部图片地址，`ossUrl` 指向第一张图片：
+服务端根据 `imageCount` 并发执行单图生成，按请求序号上传到 OSS 并返回
+JSON。`ossUrls` 包含全部图片地址，`ossUrl` 指向第一张图片：
 
 ```json
 {
@@ -178,6 +187,8 @@ GPT Image 2 示例：
   "data": {
     "requestId": "req-001",
     "model": "gemini-model-id-from-env",
+    "requestedCount": 2,
+    "generatedCount": 2,
     "ossUrl": "https://your-bucket.oss-cn-hangzhou.aliyuncs.com/path/to/file.png",
     "ossUrls": [
       "https://your-bucket.oss-cn-hangzhou.aliyuncs.com/path/to/file-1.png",
@@ -189,9 +200,19 @@ GPT Image 2 示例：
 }
 ```
 
+多图生成规则：
+
+- `imageCount` 必须为正整数，默认最大值为 `4`
+- 最大数量由 `IMAGE_GENERATION_MAX_COUNT` 配置
+- 单个批次的并发数由 `IMAGE_GENERATION_MAX_CONCURRENCY` 配置
+- 每个生成任务独立执行主服务商重试与兜底
+- 任意生成任务失败时，整个请求返回失败
+- 返回的 `ossUrls` 顺序与生成任务序号一致
+
 ### `POST /api/generate-image`
 
-生成图片后直接返回图片二进制文件（不经过 OSS），无需鉴权头。
+生成图片后直接返回图片二进制文件（不经过 OSS），需要在
+`Authorization` 请求头中携带访问令牌。
 
 - 响应 `Content-Type`：图片的 MIME 类型（如 `image/png`）
 - 响应 `Content-Disposition`：附带文件名

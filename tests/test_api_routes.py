@@ -130,6 +130,49 @@ class ApiRoutesTestCase(unittest.TestCase):
         self.assertIsNotNone(completed_trace_id)
         self.assertEqual(received_trace_id.group(1), completed_trace_id.group(1))
 
+    def test_process_image_passes_count_and_returns_multi_image_contract(
+        self,
+    ) -> None:
+        result = {
+            "requestId": "request-1",
+            "model": "gemini-3.1-flash-image",
+            "requestedCount": 2,
+            "generatedCount": 2,
+            "ossUrl": "https://bucket.example/first.png",
+            "ossUrls": [
+                "https://bucket.example/first.png",
+                "https://bucket.example/second.png",
+            ],
+            "provider": "openrouter",
+            "fallbackUsed": True,
+        }
+        with (
+            patch("api.routes.image.verify_base_request"),
+            patch(
+                "api.routes.image.process_image_request",
+                return_value=result,
+            ) as process_image_request,
+        ):
+            response = self.client.post(
+                "/api/process-image",
+                headers={
+                    "X-Base-Signature": "signature",
+                    "X-Pack-Id": "pack-id",
+                },
+                json={
+                    "requestId": "request-1",
+                    "prompt": "生成图片",
+                    "imageCount": 2,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            process_image_request.call_args.args[0].image_count,
+            2,
+        )
+        self.assertEqual(response.json["data"], result)
+
 
 if __name__ == "__main__":
     unittest.main()
