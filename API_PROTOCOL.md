@@ -39,7 +39,7 @@
 | `model` | string | 否 | `providers.json` 默认模型 | 以 `gpt-image` 开头走 GPT Image，否则走 Gemini |
 | `aspectRatio` | string | 否 | 不填 | 输出图片比例 |
 | `requestId` | string | 否 | `""` | 请求追踪 ID |
-| `imageCount` | integer | 否 | `1` | `/api/process-image` 的图片数量，默认范围 `1～4` |
+| `imageCount` | integer | 否 | `1` | `/api/process-image` 的图片数量，默认范围 `1～5` |
 
 ### Gemini 专属参数
 
@@ -202,7 +202,7 @@ JSON。`ossUrls` 包含全部图片地址，`ossUrl` 指向第一张图片：
 
 多图生成规则：
 
-- `imageCount` 必须为正整数，默认最大值为 `4`
+- `imageCount` 必须为正整数，默认最大值为 `5`
 - 最大数量由 `IMAGE_GENERATION_MAX_COUNT` 配置
 - 单个批次的并发数由 `IMAGE_GENERATION_MAX_CONCURRENCY` 配置
 - 每个生成任务独立执行主服务商重试与兜底

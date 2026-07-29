@@ -168,8 +168,8 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
 
         settings = SimpleNamespace(
             image_generation=SimpleNamespace(
-                max_count=4,
-                max_concurrency=4,
+                max_count=5,
+                max_concurrency=5,
             )
         )
         get_app_settings.return_value = settings
@@ -250,18 +250,18 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
             file_urls=[],
             files=[],
             raw_payload={},
-            image_count=5,
+            image_count=6,
         )
         get_app_settings.return_value = SimpleNamespace(
             image_generation=SimpleNamespace(
-                max_count=4,
-                max_concurrency=4,
+                max_count=5,
+                max_concurrency=5,
             )
         )
 
         with self.assertRaisesRegex(
             ValueError,
-            "imageCount must be between 1 and 4",
+            "imageCount must be between 1 and 5",
         ):
             process_image_request(request_data)
 

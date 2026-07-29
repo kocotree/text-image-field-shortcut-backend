@@ -70,8 +70,8 @@ class RoutingSettings:
 
 @dataclass(frozen=True)
 class ImageGenerationSettings:
-    max_count: int = 4
-    max_concurrency: int = 4
+    max_count: int = 5
+    max_concurrency: int = 5
 
 
 @dataclass(frozen=True)
@@ -188,9 +188,9 @@ def get_app_settings() -> AppSettings:
             ),
         ),
         image_generation=ImageGenerationSettings(
-            max_count=_read_positive_int("IMAGE_GENERATION_MAX_COUNT", 4),
+            max_count=_read_positive_int("IMAGE_GENERATION_MAX_COUNT", 5),
             max_concurrency=_read_positive_int(
-                "IMAGE_GENERATION_MAX_CONCURRENCY", 4
+                "IMAGE_GENERATION_MAX_CONCURRENCY", 5
             ),
         ),
         circuit=CircuitBreakerSettings(
