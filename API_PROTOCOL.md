@@ -206,6 +206,7 @@ JSON。`ossUrls` 包含全部图片地址，`ossUrl` 指向第一张图片：
 - 最大数量由 `IMAGE_GENERATION_MAX_COUNT` 配置
 - 单个批次的并发数由 `IMAGE_GENERATION_MAX_CONCURRENCY` 配置
 - 每个生成任务独立执行主服务商重试与兜底
+- 多图子任务会补充当前序号，用于识别提示词中的分图要求并禁止拼图
 - 任意生成任务失败时，整个请求返回失败
 - 返回的 `ossUrls` 顺序与生成任务序号一致
 

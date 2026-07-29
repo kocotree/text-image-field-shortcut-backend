@@ -50,6 +50,28 @@ def _materialize_uploaded_files(
     return replace(request_data, files=materialized_files)
 
 
+def _build_batch_prompt(prompt: str, index: int, total: int) -> str:
+    """为多图子任务补充当前图片序号。
+
+    参数：
+        prompt: 客户端传入的原始提示词。
+        index: 当前图片在批次中的零基序号。
+        total: 当前批次请求的图片总数。
+
+    返回值：
+        单图请求保持原提示词，多图请求返回带序号约束的提示词。
+    """
+    if total <= 1:
+        return prompt
+    current = index + 1
+    prefix = (
+        f"这是本批次第 {current} 张，共 {total} 张。"
+        f"若提示词包含分图要求，只执行第 {current} 张对应的要求；"
+        "仅生成一张完整图片，禁止拼图或显示序号。"
+    )
+    return f"{prefix}\n\n{prompt}"
+
+
 def _generate_batch_item(
     router: FailoverRouter,
     request_data: GenerateImageRequest,
@@ -79,6 +101,11 @@ def _generate_batch_item(
     item_request = replace(
         request_data,
         request_id=item_request_id,
+        prompt=_build_batch_prompt(
+            request_data.prompt,
+            index,
+            request_data.image_count,
+        ),
         image_count=1,
     )
     route_result = router.generate_image(item_request)

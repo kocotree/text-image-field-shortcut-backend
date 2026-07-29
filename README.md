@@ -94,8 +94,9 @@ Invoke-WebRequest http://127.0.0.1:5000/health
 
 ### 图片处理接口（返回 OSS URL 列表）
 
-接口根据 `imageCount` 并发执行单图生成，并按任务序号上传全部图片。响应中的
-`ossUrls` 包含全部图片地址，`ossUrl` 指向第一张图片。
+接口根据 `imageCount` 并发执行单图生成。多图子任务会补充当前序号，用于识别
+提示词中的分图要求并禁止拼图。生成结果按任务序号上传，响应中的 `ossUrls`
+包含全部图片地址，`ossUrl` 指向第一张图片。
 
 ```powershell
 $body = @{

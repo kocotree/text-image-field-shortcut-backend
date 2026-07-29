@@ -12,7 +12,11 @@ from flask import Flask, request
 from api.parsers import parse_generate_image_request
 from services.domain.requests import GenerateImageRequest
 from services.gemini_service import GeminiRawResponse
-from services.pipelines.image import generate_image_only, process_image_request
+from services.pipelines.image import (
+    _build_batch_prompt,
+    generate_image_only,
+    process_image_request,
+)
 from services.response_normalizer import (
     NormalizedGeneratedAsset,
     NormalizedModelResult,
@@ -141,9 +145,11 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
             for index, payload in enumerate((b"first", b"second"))
         }
         started = threading.Barrier(2)
+        received_prompts = {}
 
         def generate_image(item_request):
             item_index = int(item_request.request_id.rsplit(":", 1)[1]) - 1
+            received_prompts[item_index] = item_request.prompt
             started.wait(timeout=1)
             provider_result = SimpleNamespace(
                 public_model="gemini-3.1-flash-image",
@@ -190,6 +196,24 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
             2,
         )
         self.assertEqual(upload_asset_to_oss.call_count, 2)
+        self.assertEqual(
+            received_prompts,
+            {
+                0: (
+                    "这是本批次第 1 张，共 2 张。"
+                    "若提示词包含分图要求，只执行第 1 张对应的要求；"
+                    "仅生成一张完整图片，禁止拼图或显示序号。\n\n"
+                    "生成图片"
+                ),
+                1: (
+                    "这是本批次第 2 张，共 2 张。"
+                    "若提示词包含分图要求，只执行第 2 张对应的要求；"
+                    "仅生成一张完整图片，禁止拼图或显示序号。\n\n"
+                    "生成图片"
+                ),
+            },
+        )
+        self.assertEqual(request_data.prompt, "生成图片")
         self.assertEqual(result["requestedCount"], 2)
         self.assertEqual(result["generatedCount"], 2)
         self.assertEqual(
@@ -204,6 +228,12 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
             "https://bucket.example/images/first.png",
         )
         get_app_settings.assert_called_once_with()
+
+    def test_single_image_keeps_original_prompt(self) -> None:
+        self.assertEqual(
+            _build_batch_prompt("生成一张产品图", 0, 1),
+            "生成一张产品图",
+        )
 
     @patch("services.pipelines.image.get_app_settings")
     def test_rejects_image_count_over_configured_limit(
