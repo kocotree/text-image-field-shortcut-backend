@@ -55,10 +55,10 @@ OSS_BUCKET_FOLDER_PREFIX=images
 
 FEISHU_ALERT_ENABLED=true
 FEISHU_ALERT_WEBHOOK_URL=
-FEISHU_ALERT_SECRET=
+FEISHU_ALERT_KEYWORD=
 ```
 
-使用 STS 临时凭证访问 OSS 时增加 `OSS_SESSION_TOKEN`。`FEISHU_ALERT_ENABLED=true` 时必须同时配置 Webhook 和签名密钥。
+使用 STS 临时凭证访问 OSS 时增加 `OSS_SESSION_TOKEN`。`FEISHU_ALERT_ENABLED=true` 时必须同时配置 Webhook 和机器人关键词。服务会把 `FEISHU_ALERT_KEYWORD` 放在每条告警消息开头。
 
 熔断、兜底告警计数和通知冷却使用应用进程内的线程安全内存。Gunicorn 以单 worker、多线程方式运行，不需要额外的状态中间件；应用进程重启后状态会清空。
 

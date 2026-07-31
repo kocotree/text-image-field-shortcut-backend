@@ -1,19 +1,12 @@
 from __future__ import annotations
 
-import base64
-import hashlib
-import hmac
 import json
 import unittest
 
 import httpx
 
 from services.domain.errors import ErrorCategory, ProviderError
-from services.notifications.feishu import (
-    AlertMessage,
-    FeishuAlertNotifier,
-    build_feishu_signature,
-)
+from services.notifications.feishu import AlertMessage, FeishuAlertNotifier
 from services.notifications.routing_events import RoutingEventReporter
 from services.settings import AlertSettings, HttpClientSettings
 
@@ -69,7 +62,7 @@ def _alert_settings() -> AlertSettings:
     return AlertSettings(
         enabled=True,
         webhook_url="https://feishu.example/hook",
-        secret="secret",
+        keyword="image-alert",
         service_name="image-service",
         environment="test",
         fallback_window_seconds=300,
@@ -82,16 +75,7 @@ def _alert_settings() -> AlertSettings:
 
 
 class FeishuAlertNotifierTestCase(unittest.TestCase):
-    def test_signature_matches_feishu_algorithm(self) -> None:
-        timestamp = 1_700_000_000
-        key = f"{timestamp}\nsecret".encode("utf-8")
-        expected = base64.b64encode(
-            hmac.new(key, b"", hashlib.sha256).digest()
-        ).decode("ascii")
-
-        self.assertEqual(build_feishu_signature(timestamp, "secret"), expected)
-
-    def test_send_uses_signed_text_payload(self) -> None:
+    def test_send_uses_keyword_text_payload(self) -> None:
         captured_request: httpx.Request | None = None
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -104,7 +88,6 @@ class FeishuAlertNotifierTestCase(unittest.TestCase):
                 _alert_settings(),
                 HttpClientSettings(),
                 client,
-                clock=lambda: 1_700_000_000,
             )
             sent = notifier.send(
                 AlertMessage(
@@ -117,9 +100,10 @@ class FeishuAlertNotifierTestCase(unittest.TestCase):
         self.assertTrue(sent)
         self.assertIsNotNone(captured_request)
         payload = json.loads(captured_request.content)
-        self.assertEqual(payload["timestamp"], "1700000000")
         self.assertEqual(payload["msg_type"], "text")
-        self.assertNotIn("secret", captured_request.content.decode("utf-8"))
+        self.assertTrue(payload["content"]["text"].startswith("image-alert "))
+        self.assertNotIn("timestamp", payload)
+        self.assertNotIn("sign", payload)
 
     def test_send_failure_returns_false(self) -> None:
         transport = httpx.MockTransport(

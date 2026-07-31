@@ -1,12 +1,7 @@
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass
-import hashlib
-import hmac
 import logging
-import time
-from typing import Callable
 
 import httpx
 
@@ -23,21 +18,6 @@ class AlertMessage:
     fields: tuple[tuple[str, str], ...]
 
 
-def build_feishu_signature(timestamp: int, secret: str) -> str:
-    """计算飞书自定义机器人签名。
-
-    参数：
-        timestamp: 当前 Unix 秒级时间戳。
-        secret: 飞书自定义机器人的签名密钥。
-
-    返回值：
-        Base64 编码的 HMAC-SHA256 签名。
-    """
-    signing_key = f"{timestamp}\n{secret}".encode("utf-8")
-    digest = hmac.new(signing_key, b"", hashlib.sha256).digest()
-    return base64.b64encode(digest).decode("ascii")
-
-
 class FeishuAlertNotifier:
     """通过飞书自定义机器人发送脱敏告警。"""
 
@@ -46,12 +26,10 @@ class FeishuAlertNotifier:
         alert_settings: AlertSettings,
         http_settings: HttpClientSettings,
         client: httpx.Client | None = None,
-        clock: Callable[[], float] = time.time,
     ) -> None:
         self._settings = alert_settings
         self._http_settings = http_settings
         self._client = client
-        self._clock = clock
 
     def send(self, message: AlertMessage) -> bool:
         """发送飞书告警且不向业务链路抛出异常。
@@ -64,20 +42,18 @@ class FeishuAlertNotifier:
         """
         if not self._settings.enabled:
             return False
-        if not self._settings.webhook_url or not self._settings.secret:
+        if not self._settings.webhook_url or not self._settings.keyword:
             logger.error("notification.feishu.configuration_invalid")
             return False
 
-        timestamp = int(self._clock())
         field_lines = "\n".join(
             f"{name}: {value}" for name, value in message.fields
         )
         text = f"[{message.level}] {message.title}"
+        text = f"{self._settings.keyword} {text}"
         if field_lines:
             text = f"{text}\n{field_lines}"
         payload = {
-            "timestamp": str(timestamp),
-            "sign": build_feishu_signature(timestamp, self._settings.secret),
             "msg_type": "text",
             "content": {"text": text},
         }

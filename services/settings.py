@@ -86,7 +86,7 @@ class CircuitBreakerSettings:
 class AlertSettings:
     enabled: bool = False
     webhook_url: str = ""
-    secret: str = ""
+    keyword: str = ""
     service_name: str = "text-image-field-shortcut-backend"
     environment: str = "production"
     fallback_window_seconds: int = 300
@@ -206,7 +206,7 @@ def get_app_settings() -> AppSettings:
         alert=AlertSettings(
             enabled=_read_bool("FEISHU_ALERT_ENABLED", False),
             webhook_url=os.getenv("FEISHU_ALERT_WEBHOOK_URL", "").strip(),
-            secret=os.getenv("FEISHU_ALERT_SECRET", "").strip(),
+            keyword=os.getenv("FEISHU_ALERT_KEYWORD", "").strip(),
             service_name=os.getenv(
                 "SERVICE_NAME", "text-image-field-shortcut-backend"
             ).strip(),
@@ -245,10 +245,10 @@ def validate_app_settings(settings: AppSettings) -> None:
         无；配置不完整时抛出明确异常。
     """
     if settings.alert.enabled and (
-        not settings.alert.webhook_url or not settings.alert.secret
+        not settings.alert.webhook_url or not settings.alert.keyword
     ):
         raise ValueError(
-            "FEISHU_ALERT_ENABLED=true 时必须配置 Webhook URL 和签名密钥。"
+            "FEISHU_ALERT_ENABLED=true 时必须配置 Webhook URL 和关键词。"
         )
 
 
