@@ -97,9 +97,19 @@ class FeishuAlertNotifier:
                 or response_payload.get("StatusCode") == 0
             )
             if not success:
+                business_code = response_payload.get(
+                    "code", response_payload.get("StatusCode")
+                )
+                business_message = response_payload.get(
+                    "msg", response_payload.get("StatusMessage")
+                )
                 logger.error(
                     "notification.feishu.send.rejected: %s",
-                    {"statusCode": response.status_code},
+                    {
+                        "statusCode": response.status_code,
+                        "businessCode": business_code,
+                        "businessMessage": business_message,
+                    },
                 )
                 return False
             logger.info(

@@ -140,6 +140,31 @@ class FeishuAlertNotifierTestCase(unittest.TestCase):
             "https://feishu.example/hook", "\n".join(captured_logs.output)
         )
 
+    def test_send_rejection_logs_business_error(self) -> None:
+        transport = httpx.MockTransport(
+            lambda _request: httpx.Response(
+                200,
+                json={"code": 19024, "msg": "Key Words Not Found"},
+            )
+        )
+        with httpx.Client(transport=transport) as client:
+            notifier = FeishuAlertNotifier(
+                _alert_settings(), HttpClientSettings(), client
+            )
+            with self.assertLogs(
+                "services.notifications.feishu", level="ERROR"
+            ) as captured_logs:
+                self.assertFalse(
+                    notifier.send(AlertMessage("Critical", "发送被拒绝", ()))
+                )
+
+        rejection_log = "\n".join(captured_logs.output)
+        self.assertIn("'businessCode': 19024", rejection_log)
+        self.assertIn(
+            "'businessMessage': 'Key Words Not Found'", rejection_log
+        )
+        self.assertNotIn("https://feishu.example/hook", rejection_log)
+
 
 class RoutingEventReporterTestCase(unittest.TestCase):
     def setUp(self) -> None:
