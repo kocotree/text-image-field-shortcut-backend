@@ -210,7 +210,10 @@ class FailoverRouterTestCase(unittest.TestCase):
         primary_error = ProviderError(
             provider="easyrouter",
             category=ErrorCategory.INVALID_REQUEST,
-            message="invalid",
+            message="invalid parameter",
+            status_code=400,
+            request_id="provider-request-1",
+            provider_error_type="invalid_request",
             retryable=False,
         )
         primary = FakeProvider("easyrouter", [primary_error])
@@ -221,11 +224,19 @@ class FailoverRouterTestCase(unittest.TestCase):
             {"easyrouter": primary, "openrouter": fallback},
         )
 
-        with self.assertRaises(ProviderError) as raised:
-            router.generate_image(_build_request())
+        with self.assertLogs(
+            "services.routing.failover", level="WARNING"
+        ) as captured_logs:
+            with self.assertRaises(ProviderError) as raised:
+                router.generate_image(_build_request())
 
         self.assertEqual(raised.exception.category, ErrorCategory.INVALID_REQUEST)
         self.assertEqual(fallback.calls, [])
+        failure_log = "\n".join(captured_logs.output)
+        self.assertIn("'statusCode': 400", failure_log)
+        self.assertIn("'providerErrorType': 'invalid_request'", failure_log)
+        self.assertIn("'providerRequestId': 'provider-request-1'", failure_log)
+        self.assertIn("'message': 'invalid parameter'", failure_log)
 
     def test_empty_primary_response_retries_before_fallback(self) -> None:
         empty = _empty_image_result(

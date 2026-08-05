@@ -200,9 +200,12 @@ class OpenRouterProviderTestCase(unittest.TestCase):
                 json={
                     "error": {
                         "message": "blocked",
-                        "error_type": "content_policy_violation",
+                        "metadata": {
+                            "error_type": "content_policy_violation",
+                        },
                     }
                 },
+                headers={"x-request-id": "or-error-request"},
             )
         )
         request_data = GenerateImageRequest(
@@ -232,6 +235,11 @@ class OpenRouterProviderTestCase(unittest.TestCase):
                 )
 
         self.assertEqual(raised.exception.category, ErrorCategory.CONTENT_POLICY)
+        self.assertEqual(
+            raised.exception.provider_error_type,
+            "content_policy_violation",
+        )
+        self.assertEqual(raised.exception.request_id, "or-error-request")
         self.assertFalse(raised.exception.retryable)
 
 

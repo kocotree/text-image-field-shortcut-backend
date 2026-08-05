@@ -34,6 +34,7 @@ class ProviderError(RuntimeError):
     retryable: bool = False
     retry_after_seconds: float | None = None
     request_id: str = ""
+    provider_error_type: str = ""
     counts_toward_circuit: bool = True
     cause: Exception | None = None
 
@@ -109,6 +110,7 @@ def provider_error_from_status(
         retryable=retryable,
         retry_after_seconds=_read_retry_after(headers or {}),
         request_id=request_id,
+        provider_error_type=normalized_error_type,
     )
 
 

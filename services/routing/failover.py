@@ -405,6 +405,15 @@ class FailoverRouter:
                             "attempt": attempt_number,
                             "elapsedMs": elapsed_ms,
                             "errorCategory": error.category,
+                            "statusCode": error.status_code,
+                            "providerErrorType": error.provider_error_type,
+                            "causeType": (
+                                type(error.cause).__name__
+                                if error.cause is not None
+                                else ""
+                            ),
+                            "providerRequestId": error.request_id,
+                            "message": " ".join(str(error).split())[:300],
                         },
                     )
                     if not error.retryable:

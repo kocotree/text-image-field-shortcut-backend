@@ -61,8 +61,13 @@ def _parse_error_payload(response: httpx.Response) -> tuple[str, str]:
         return "", response.text[:1000]
     error = payload.get("error", {}) if isinstance(payload, dict) else {}
     if isinstance(error, dict):
+        metadata = error.get("metadata", {})
+        metadata_error_type = (
+            metadata.get("error_type") if isinstance(metadata, dict) else ""
+        )
         return str(
-            error.get("type")
+            metadata_error_type
+            or error.get("type")
             or error.get("error_type")
             or payload.get("error_type")
             or ""
