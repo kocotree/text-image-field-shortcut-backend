@@ -12,6 +12,8 @@
 - HTTP 接口骨架
 - JSON / multipart 两种输入解析
 - Gemini 生图（支持参考图与并发多图生成）
+- 参考图单次下载、内存共享和格式校验
+- 进程级图片生成并发闸门与等待队列
 - GPT Image 2 生图（size/quality/moderation）
 - Gemini 图片理解（图片→文本）
 - 真实 OSS 上传
@@ -46,6 +48,7 @@ OPENROUTER_API_KEY=
 FALLBACK_ENABLED=true
 IMAGE_GENERATION_MAX_COUNT=5
 IMAGE_GENERATION_MAX_CONCURRENCY=5
+IMAGE_GENERATION_QUEUE_TIMEOUT_SECONDS=300
 
 OSS_ENDPOINT=oss-cn-hangzhou.aliyuncs.com
 OSS_ACCESS_KEY_ID=
@@ -61,6 +64,8 @@ FEISHU_ALERT_KEYWORD=
 使用 STS 临时凭证访问 OSS 时增加 `OSS_SESSION_TOKEN`。`FEISHU_ALERT_ENABLED=true` 时必须同时配置 Webhook 和机器人关键词。服务会把 `FEISHU_ALERT_KEYWORD` 放在每条告警消息开头。
 
 熔断、兜底告警计数和通知冷却使用应用进程内的线程安全内存。Gunicorn 以单 worker、多线程方式运行，不需要额外的状态中间件；应用进程重启后状态会清空。
+
+`IMAGE_GENERATION_MAX_CONCURRENCY` 表示当前进程同时执行的单张图片生成任务上限，所有 HTTP 请求共享同一个并发闸门。超过上限的任务在内存中等待，最长等待时间由 `IMAGE_GENERATION_QUEUE_TIMEOUT_SECONDS` 控制，并且不会超过模型请求总时限。当前部署使用单 Gunicorn worker，因此该限制就是整个服务实例的生成并发上限。
 
 ## 日志
 
@@ -98,6 +103,8 @@ Invoke-WebRequest http://127.0.0.1:5000/health
 提示词中的分图要求并禁止拼图。生成结果按任务序号上传，响应中的 `ossUrls`
 包含全部图片地址，`ossUrl` 指向第一张图片。
 
+请求中的参考图会在拆分多图任务之前下载一次并保存在当前请求的内存中。EasyRouter 使用 Gemini `inline_data`，OpenRouter 使用 Base64 Data URL；同一批次的生成任务共享图片字节，请求结束后不保留参考图缓存。
+
 ```powershell
 $body = @{
   requestId = "req-001"
@@ -116,6 +123,18 @@ Invoke-RestMethod `
   -Uri http://127.0.0.1:5000/api/process-image `
   -ContentType "application/json" `
   -Body $body
+```
+
+服务商失败响应包含稳定的 `errorCode`。输入参数或参考图无效返回 HTTP 400；主服务商和兜底服务商均不可用、生成队列超时等可重试故障返回 HTTP 503。例如：
+
+```json
+{
+  "success": false,
+  "message": "模型服务暂时不可用，请稍后重试。",
+  "timestamp": "2026-08-06T08:00:00+00:00",
+  "data": {},
+  "errorCode": "provider_unavailable"
+}
 ```
 
 ### 图片生成接口（直接返回图片文件）
