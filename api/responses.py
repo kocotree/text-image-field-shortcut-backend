@@ -20,6 +20,7 @@ def build_json_response(
     message: str,
     data: dict[str, Any] | None = None,
     status_code: int = HTTPStatus.OK,
+    error_code: str = "",
 ):
     """构建统一的接口 JSON 响应。
 
@@ -28,6 +29,7 @@ def build_json_response(
         message: 面向客户端的稳定消息。
         data: 响应业务数据。
         status_code: HTTP 状态码。
+        error_code: 供客户端稳定识别的业务错误代码。
 
     返回值：
         Flask JSON 响应和 HTTP 状态码。
@@ -38,6 +40,8 @@ def build_json_response(
         "timestamp": utc_now_iso(),
         "data": data or {},
     }
+    if error_code:
+        payload["errorCode"] = error_code
     return jsonify(payload), status_code
 
 
@@ -51,8 +55,9 @@ def provider_error_response(error: ProviderError):
         Flask JSON 响应及对应 HTTP 状态码。
     """
     if isinstance(error, FailoverExhaustedError):
-        status_code = HTTPStatus.BAD_GATEWAY
+        status_code = HTTPStatus.SERVICE_UNAVAILABLE
         message = "模型主服务商和兜底服务商当前均不可用，请稍后重试。"
+        error_code = "provider_unavailable"
     elif error.category in {
         ErrorCategory.INVALID_REQUEST,
         ErrorCategory.INVALID_ASSET,
@@ -61,6 +66,7 @@ def provider_error_response(error: ProviderError):
     }:
         status_code = HTTPStatus.BAD_REQUEST
         message = "模型请求未被服务商接受，请检查输入参数。"
+        error_code = error.category.value
     elif error.category in {
         ErrorCategory.CONNECTION,
         ErrorCategory.TIMEOUT,
@@ -70,9 +76,14 @@ def provider_error_response(error: ProviderError):
     }:
         status_code = HTTPStatus.SERVICE_UNAVAILABLE
         message = "模型服务暂时不可用，请稍后重试。"
+        error_code = "provider_unavailable"
     else:
         status_code = HTTPStatus.BAD_GATEWAY
         message = "模型服务调用失败，请稍后重试。"
+        error_code = "provider_error"
     return build_json_response(
-        success=False, message=message, status_code=status_code
+        success=False,
+        message=message,
+        status_code=status_code,
+        error_code=error_code,
     )

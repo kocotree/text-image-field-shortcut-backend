@@ -53,9 +53,9 @@ class FailoverExhaustedError(ProviderError):
         last_error = errors[-1]
         super().__init__(
             provider=last_error.provider,
-            category=last_error.category,
+            category=ErrorCategory.UPSTREAM_UNAVAILABLE,
             message="主服务商和兜底服务商当前均不可用。",
-            status_code=last_error.status_code,
+            status_code=503,
             retryable=True,
             request_id=last_error.request_id,
             cause=last_error,
@@ -300,6 +300,7 @@ class FailoverRouter:
             maximum_attempts = max_attempts + empty_retries_remaining
             attempt_number = 0
             provider_error: ProviderError | None = None
+            stop_after_provider = False
             while attempt_number < maximum_attempts:
                 attempt_number += 1
                 remaining_seconds = deadline - time.monotonic()
@@ -430,26 +431,29 @@ class FailoverRouter:
                         },
                     )
                     if not error.retryable:
-                        if self._circuit_breaker:
-                            circuit_opened = self._circuit_breaker.record_failure(
-                                provider_name, capability, error
-                            )
-                            self._report_circuit_open(
-                                circuit_opened,
+                        if provider_index == 0:
+                            if self._circuit_breaker:
+                                circuit_opened = self._circuit_breaker.record_failure(
+                                    provider_name, capability, error
+                                )
+                                self._report_circuit_open(
+                                    circuit_opened,
+                                    provider_name,
+                                    capability,
+                                    public_model,
+                                    error,
+                                    request_id,
+                                )
+                            self._report_provider_failure(
                                 provider_name,
                                 capability,
                                 public_model,
                                 error,
                                 request_id,
                             )
-                        self._report_provider_failure(
-                            provider_name,
-                            capability,
-                            public_model,
-                            error,
-                            request_id,
-                        )
-                        raise
+                            raise
+                        stop_after_provider = True
+                        break
                     if attempt_number < max_attempts:
                         if self._wait_for_retry(error, deadline):
                             continue
@@ -475,6 +479,9 @@ class FailoverRouter:
                     provider_error,
                     request_id,
                 )
+            if stop_after_provider:
+                break
+
         if len({error.provider for error in errors}) > 1:
             if self._event_reporter:
                 self._event_reporter.on_all_providers_failed(

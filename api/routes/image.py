@@ -73,6 +73,7 @@ def process_image():
             success=False,
             message=str(error),
             status_code=HTTPStatus.FORBIDDEN,
+            error_code="authorization_failed",
         )
     except RequestValidationError as error:
         logger.warning(
@@ -89,6 +90,7 @@ def process_image():
             success=False,
             message=str(error),
             status_code=HTTPStatus.BAD_REQUEST,
+            error_code="invalid_request",
         )
     except ProviderError as error:
         logger.warning(
@@ -116,6 +118,7 @@ def process_image():
             success=False,
             message=public_message,
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            error_code="internal_error",
         )
 
 
@@ -167,6 +170,7 @@ def generate_image():
             success=False,
             message=str(error),
             status_code=HTTPStatus.BAD_REQUEST,
+            error_code="invalid_request",
         )
     except ProviderError as error:
         logger.warning(
@@ -186,4 +190,5 @@ def generate_image():
             success=False,
             message="内部服务错误，请稍后重试。",
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            error_code="internal_error",
         )

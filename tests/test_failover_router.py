@@ -296,6 +296,37 @@ class FailoverRouterTestCase(unittest.TestCase):
             ["provider_failure", "provider_failure", "all_failed"],
         )
 
+    def test_non_retryable_fallback_does_not_mask_retryable_primary_error(
+        self,
+    ) -> None:
+        primary_error = ProviderError(
+            provider="easyrouter",
+            category=ErrorCategory.LOCAL_CAPACITY,
+            message="pool busy",
+            retryable=True,
+        )
+        fallback_error = ProviderError(
+            provider="openrouter",
+            category=ErrorCategory.INVALID_REQUEST,
+            message="Unsupported URL, public internet addresses only",
+            status_code=400,
+            retryable=False,
+        )
+        router = FailoverRouter(
+            _build_settings(),
+            self.registry,
+            {
+                "easyrouter": FakeProvider("easyrouter", [primary_error]),
+                "openrouter": FakeProvider("openrouter", [fallback_error]),
+            },
+        )
+
+        with self.assertRaises(FailoverExhaustedError) as raised:
+            router.generate_image(_build_request())
+
+        self.assertEqual(len(raised.exception.errors), 2)
+        self.assertTrue(raised.exception.retryable)
+
     def test_fallback_switch_can_disable_openrouter(self) -> None:
         primary_error = ProviderError(
             provider="easyrouter",

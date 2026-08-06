@@ -7,7 +7,9 @@ from unittest.mock import patch
 import httpx
 
 from api.app import create_app
+from services.domain.errors import ErrorCategory, ProviderError
 from services.pipelines.image import GeneratedImageFile
+from services.routing import FailoverExhaustedError
 
 
 class ApiRoutesTestCase(unittest.TestCase):
@@ -172,6 +174,50 @@ class ApiRoutesTestCase(unittest.TestCase):
             2,
         )
         self.assertEqual(response.json["data"], result)
+
+    def test_process_image_returns_retryable_error_when_all_providers_fail(
+        self,
+    ) -> None:
+        primary_error = ProviderError(
+            provider="easyrouter",
+            category=ErrorCategory.LOCAL_CAPACITY,
+            message="pool busy",
+            retryable=True,
+        )
+        fallback_error = ProviderError(
+            provider="openrouter",
+            category=ErrorCategory.INVALID_REQUEST,
+            message="unsupported reference URL",
+            status_code=400,
+            retryable=False,
+        )
+        with (
+            patch("api.routes.image.verify_base_request"),
+            patch(
+                "api.routes.image.process_image_request",
+                side_effect=FailoverExhaustedError(
+                    (primary_error, fallback_error)
+                ),
+            ),
+        ):
+            response = self.client.post(
+                "/api/process-image",
+                headers={
+                    "X-Base-Signature": "signature",
+                    "X-Pack-Id": "pack-id",
+                },
+                json={
+                    "requestId": "request-failed",
+                    "prompt": "生成图片",
+                },
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json["success"])
+        self.assertEqual(
+            response.json["errorCode"],
+            "provider_unavailable",
+        )
 
 
 if __name__ == "__main__":
