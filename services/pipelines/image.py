@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from services.domain.requests import GenerateImageRequest, RequestValidationError
 from services.http import build_asset_fetcher
 from services.oss_service import upload_asset_to_oss
+from services.reference_images import materialize_reference_images
 from services.response_normalizer import NormalizedGeneratedAsset
 from services.routing import FailoverRouter, build_failover_router
 from services.settings import AppSettings, get_app_settings
@@ -21,33 +22,6 @@ class GeneratedBatchItem:
     model: str
     provider: str
     fallback_used: bool
-
-
-def _materialize_uploaded_files(
-    request_data: GenerateImageRequest,
-) -> GenerateImageRequest:
-    """在并发前读取上传文件，避免多个线程共享文件流。
-
-    参数：
-        request_data: 已解析完成的图片生成请求。
-
-    返回值：
-        上传文件内容已缓存为字节的图片生成请求。
-    """
-    if request_data.image_count == 1 or not request_data.files:
-        return request_data
-
-    materialized_files = []
-    for uploaded_file in request_data.files:
-        if uploaded_file.content is not None:
-            materialized_files.append(uploaded_file)
-            continue
-        storage = uploaded_file.storage
-        storage.stream.seek(0)
-        content = storage.read()
-        storage.stream.seek(0)
-        materialized_files.append(replace(uploaded_file, content=content))
-    return replace(request_data, files=materialized_files)
 
 
 def _build_batch_prompt(prompt: str, index: int, total: int) -> str:
@@ -159,7 +133,7 @@ def _generate_batch(
             f"{settings.image_generation.max_count}."
         )
 
-    prepared_request = _materialize_uploaded_files(request_data)
+    prepared_request = materialize_reference_images(request_data, settings)
     router = build_failover_router(settings)
     worker_count = min(
         prepared_request.image_count,
@@ -330,7 +304,10 @@ def generate_image_only(request_data: GenerateImageRequest) -> GeneratedImageFil
             "imageCount greater than 1 is only supported by /api/process-image."
         )
     settings = get_app_settings()
-    route_result = build_failover_router(settings).generate_image(request_data)
+    prepared_request = materialize_reference_images(request_data, settings)
+    route_result = build_failover_router(settings).generate_image(
+        prepared_request
+    )
     provider_result = route_result.provider_result
     asset = provider_result.result.assets[0]
     return GeneratedImageFile(

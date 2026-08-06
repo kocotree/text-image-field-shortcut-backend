@@ -12,6 +12,7 @@ from flask import Flask, request
 from api.parsers import parse_generate_image_request
 from services.domain.requests import GenerateImageRequest
 from services.gemini_service import GeminiRawResponse
+from services.http import FetchedAsset
 from services.pipelines.image import (
     _build_batch_prompt,
     generate_image_only,
@@ -285,7 +286,85 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
         ):
             generate_image_only(request_data)
 
+    @patch("services.pipelines.image.get_app_settings")
+    @patch("services.pipelines.image.build_failover_router")
+    @patch("services.pipelines.image.upload_asset_to_oss")
+    @patch("services.reference_images.build_asset_fetcher")
+    def test_downloads_reference_url_once_before_multi_image_generation(
+        self,
+        build_asset_fetcher,
+        upload_asset_to_oss,
+        build_failover_router,
+        get_app_settings,
+    ) -> None:
+        request_data = GenerateImageRequest(
+            request_id="request-reference",
+            prompt="生成图片",
+            model="gemini-3.1-flash-image",
+            aspect_ratio="1:1",
+            image_size="1K",
+            input_type="file_url",
+            file_urls=["https://assets.example/reference.png"],
+            files=[],
+            raw_payload={},
+            image_count=2,
+        )
+        settings = SimpleNamespace(
+            image_generation=SimpleNamespace(
+                max_count=5,
+                max_concurrency=5,
+            ),
+        )
+        get_app_settings.return_value = settings
+        build_asset_fetcher.return_value.fetch.return_value = FetchedAsset(
+            body=b"reference-image",
+            content_type="image/png",
+            final_url="https://assets.example/reference.png",
+        )
 
+        def generate_image(item_request):
+            self.assertEqual(item_request.file_urls, [])
+            self.assertEqual(item_request.files[0].content, b"reference-image")
+            return SimpleNamespace(
+                provider_result=SimpleNamespace(
+                    public_model="gemini-3.1-flash-image",
+                    provider="easyrouter",
+                    result=NormalizedModelResult(
+                        raw_response_type="json_base64",
+                        assets=[
+                            NormalizedGeneratedAsset(
+                                asset_type="image_base64",
+                                mime_type="image/png",
+                                file_name="generated.png",
+                                source_kind="bytes",
+                                payload=b"generated",
+                            )
+                        ],
+                        text_output="",
+                        raw_meta={},
+                    ),
+                ),
+                fallback_used=False,
+            )
+
+        build_failover_router.return_value.generate_image.side_effect = generate_image
+        upload_asset_to_oss.side_effect = [
+            SimpleNamespace(
+                object_key=f"images/{index}.png",
+                object_url=f"https://bucket.example/images/{index}.png",
+            )
+            for index in range(2)
+        ]
+
+        process_image_request(request_data)
+
+        build_asset_fetcher.return_value.fetch.assert_called_once_with(
+            "https://assets.example/reference.png"
+        )
+        self.assertEqual(
+            build_failover_router.return_value.generate_image.call_count,
+            2,
+        )
 class MultiImageRequestParserTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.app = Flask(__name__)
