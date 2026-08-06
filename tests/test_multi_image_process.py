@@ -220,19 +220,22 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
             },
         )
         self.assertEqual(request_data.prompt, "生成图片")
-        self.assertEqual(result["requestedCount"], 2)
-        self.assertEqual(result["generatedCount"], 2)
+        self.assertEqual(result.data["requestedCount"], 2)
+        self.assertEqual(result.data["generatedCount"], 2)
         self.assertEqual(
-            result["ossUrls"],
+            result.data["ossUrls"],
             [
                 "https://bucket.example/images/first.png",
                 "https://bucket.example/images/second.png",
             ],
         )
         self.assertEqual(
-            result["ossUrl"],
+            result.data["ossUrl"],
             "https://bucket.example/images/first.png",
         )
+        self.assertFalse(result.queue_summary.queued)
+        self.assertEqual(result.queue_summary.queued_image_count, 0)
+        self.assertEqual(result.queue_summary.max_queue_wait_ms, 0.0)
         get_app_settings.assert_called_once_with()
 
     def test_single_image_keeps_original_prompt(self) -> None:
@@ -377,6 +380,49 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
 
 
 class GenerationGateTestCase(unittest.TestCase):
+    def test_available_slot_is_not_reported_as_queued(self) -> None:
+        gate = GenerationGate(1)
+
+        with gate.acquire(
+            timeout_seconds=0.1,
+            request_id="request-immediate",
+            image_index=0,
+        ) as admission:
+            self.assertFalse(admission.queued)
+            self.assertEqual(admission.wait_ms, 0.0)
+
+    def test_waited_slot_is_reported_as_queued(self) -> None:
+        gate = GenerationGate(1)
+        release_slot = threading.Event()
+        slot_acquired = threading.Event()
+
+        def hold_slot() -> None:
+            with gate.acquire(
+                timeout_seconds=0.1,
+                request_id="request-holder",
+                image_index=0,
+            ):
+                slot_acquired.set()
+                release_slot.wait(timeout=0.2)
+
+        holder = threading.Thread(target=hold_slot)
+        holder.start()
+        self.assertTrue(slot_acquired.wait(timeout=0.1))
+        timer = threading.Timer(0.01, release_slot.set)
+        timer.start()
+
+        with gate.acquire(
+            timeout_seconds=0.1,
+            request_id="request-waited",
+            image_index=1,
+        ) as admission:
+            self.assertTrue(admission.queued)
+            self.assertGreater(admission.wait_ms, 0.0)
+
+        holder.join(timeout=0.1)
+        timer.join(timeout=0.1)
+        self.assertFalse(holder.is_alive())
+
     def test_queue_timeout_returns_retryable_local_capacity_error(self) -> None:
         gate = GenerationGate(1)
 

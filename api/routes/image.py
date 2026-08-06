@@ -40,7 +40,8 @@ def process_image():
             request.headers.get("X-Base-Signature", "").strip(),
             request.headers.get("X-Pack-Id", "").strip(),
         )
-        result = process_image_request(normalized_request)
+        process_result = process_image_request(normalized_request)
+        result = process_result.data
         logger.info(
             "api.request.completed: %s",
             build_result_log_summary(
@@ -49,6 +50,7 @@ def process_image():
                 message="Image generated and uploaded successfully.",
                 normalized_request=normalized_request,
                 result=result,
+                queue_summary=process_result.queue_summary,
                 elapsed_ms=request_elapsed_ms(),
             ),
         )
@@ -150,6 +152,7 @@ def generate_image():
                     "provider": image_file.provider,
                     "fallbackUsed": image_file.fallback_used,
                 },
+                queue_summary=image_file.queue_summary,
                 elapsed_ms=request_elapsed_ms(),
                 response_bytes=len(image_file.data),
             ),

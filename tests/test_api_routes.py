@@ -8,7 +8,11 @@ import httpx
 
 from api.app import create_app
 from services.domain.errors import ErrorCategory, ProviderError
-from services.pipelines.image import GeneratedImageFile
+from services.pipelines.image import (
+    GeneratedImageFile,
+    GenerationQueueSummary,
+    ProcessImageResult,
+)
 from services.routing import FailoverExhaustedError
 
 
@@ -152,7 +156,14 @@ class ApiRoutesTestCase(unittest.TestCase):
             patch("api.routes.image.verify_base_request"),
             patch(
                 "api.routes.image.process_image_request",
-                return_value=result,
+                return_value=ProcessImageResult(
+                    data=result,
+                    queue_summary=GenerationQueueSummary(
+                        queued=True,
+                        queued_image_count=1,
+                        max_queue_wait_ms=123.45,
+                    ),
+                ),
             ) as process_image_request,
         ):
             response = self.client.post(
@@ -174,6 +185,7 @@ class ApiRoutesTestCase(unittest.TestCase):
             2,
         )
         self.assertEqual(response.json["data"], result)
+        self.assertNotIn("queued", response.json["data"])
 
     def test_process_image_returns_retryable_error_when_all_providers_fail(
         self,

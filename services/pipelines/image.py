@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 from services.domain.requests import GenerateImageRequest, RequestValidationError
 from services.generation_gate import GenerationGate, get_generation_gate
@@ -24,6 +24,50 @@ class GeneratedBatchItem:
     model: str
     provider: str
     fallback_used: bool
+    queued: bool
+    queue_wait_ms: float
+
+
+@dataclass(frozen=True)
+class GenerationQueueSummary:
+    queued: bool
+    queued_image_count: int
+    max_queue_wait_ms: float
+
+    @classmethod
+    def from_items(
+        cls,
+        items: list[GeneratedBatchItem],
+    ) -> GenerationQueueSummary:
+        """汇总当前批次的生成排队情况。
+
+        参数：
+            items: 已完成生成的单张图片任务列表。
+
+        返回值：
+            包含是否排队、排队图片数和最长等待时间的汇总结果。
+        """
+        queued_items = [item for item in items if item.queued]
+        return cls(
+            queued=bool(queued_items),
+            queued_image_count=len(queued_items),
+            max_queue_wait_ms=max(
+                (item.queue_wait_ms for item in queued_items),
+                default=0.0,
+            ),
+        )
+
+    @classmethod
+    def empty(cls) -> GenerationQueueSummary:
+        return cls(False, 0, 0.0)
+
+
+@dataclass(frozen=True)
+class ProcessImageResult:
+    """封装图片处理响应数据和仅用于日志的排队汇总。"""
+
+    data: dict[str, str | bool | int | list[str]]
+    queue_summary: GenerationQueueSummary
 
 
 def _build_batch_prompt(prompt: str, index: int, total: int) -> str:
@@ -96,7 +140,7 @@ def _generate_batch_item(
         timeout_seconds=wait_seconds,
         request_id=request_data.request_id,
         image_index=index,
-    ):
+    ) as admission:
         route_result = router.generate_image(item_request, deadline=deadline)
     provider_result = route_result.provider_result
     assets = provider_result.result.assets
@@ -115,6 +159,8 @@ def _generate_batch_item(
         model=provider_result.public_model,
         provider=provider_result.provider,
         fallback_used=route_result.fallback_used,
+        queued=admission.queued,
+        queue_wait_ms=admission.wait_ms,
     )
     logger.debug(
         "image.process.generation.item.completed: %s",
@@ -231,7 +277,7 @@ def _generate_batch(
 
 def process_image_request(
     request_data: GenerateImageRequest,
-) -> dict[str, str | bool | int | list[str]]:
+) -> ProcessImageResult:
     """生成图片并上传至 OSS。
 
     参数：
@@ -287,16 +333,19 @@ def process_image_request(
             "ossObjectCount": len(oss_urls),
         },
     )
-    return {
-        "requestId": request_data.request_id,
-        "model": generated_items[0].model,
-        "requestedCount": request_data.image_count,
-        "generatedCount": len(oss_urls),
-        "ossUrl": oss_urls[0] if oss_urls else "",
-        "ossUrls": oss_urls,
-        "provider": provider,
-        "fallbackUsed": fallback_used,
-    }
+    return ProcessImageResult(
+        data={
+            "requestId": request_data.request_id,
+            "model": generated_items[0].model,
+            "requestedCount": request_data.image_count,
+            "generatedCount": len(oss_urls),
+            "ossUrl": oss_urls[0] if oss_urls else "",
+            "ossUrls": oss_urls,
+            "provider": provider,
+            "fallbackUsed": fallback_used,
+        },
+        queue_summary=GenerationQueueSummary.from_items(generated_items),
+    )
 
 
 @dataclass
@@ -307,6 +356,9 @@ class GeneratedImageFile:
     model: str
     provider: str
     fallback_used: bool
+    queue_summary: GenerationQueueSummary = field(
+        default_factory=GenerationQueueSummary.empty
+    )
 
 
 def _resolve_asset_bytes(
@@ -349,7 +401,7 @@ def generate_image_only(request_data: GenerateImageRequest) -> GeneratedImageFil
         timeout_seconds=wait_seconds,
         request_id=request_data.request_id,
         image_index=0,
-    ):
+    ) as admission:
         route_result = build_failover_router(settings).generate_image(
             prepared_request,
             deadline=deadline,
@@ -363,4 +415,9 @@ def generate_image_only(request_data: GenerateImageRequest) -> GeneratedImageFil
         model=provider_result.public_model,
         provider=provider_result.provider,
         fallback_used=route_result.fallback_used,
+        queue_summary=GenerationQueueSummary(
+            queued=admission.queued,
+            queued_image_count=int(admission.queued),
+            max_queue_wait_ms=admission.wait_ms,
+        ),
     )

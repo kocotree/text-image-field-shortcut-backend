@@ -7,6 +7,7 @@ from api.request_logging import build_result_log_summary
 from services.gemini_service import GeminiInvocationPlan, PreparedReferenceInput
 from services.openai_image_service import OpenAIImageInvocationPlan
 from services.domain.requests import GenerateImageRequest, UnderstandImageRequest
+from services.pipelines.image import GenerationQueueSummary
 
 
 class LogRedactionTestCase(unittest.TestCase):
@@ -65,6 +66,11 @@ class LogRedactionTestCase(unittest.TestCase):
                 "provider": "easyrouter",
                 "fallbackUsed": False,
             },
+            queue_summary=GenerationQueueSummary(
+                queued=True,
+                queued_image_count=2,
+                max_queue_wait_ms=456.78,
+            ),
             elapsed_ms=123.45,
         )
 
@@ -72,6 +78,9 @@ class LogRedactionTestCase(unittest.TestCase):
         self.assertEqual(summary["resolvedModel"], "gemini-3-pro-image")
         self.assertEqual(summary["totalElapsedMs"], 123.45)
         self.assertEqual(summary["ossObjectCount"], 1)
+        self.assertTrue(summary["queued"])
+        self.assertEqual(summary["queuedImageCount"], 2)
+        self.assertEqual(summary["maxQueueWaitMs"], 456.78)
         self.assertNotIn("ossUrl", summary)
 
     def test_invocation_plan_summaries_exclude_sensitive_content(self) -> None:

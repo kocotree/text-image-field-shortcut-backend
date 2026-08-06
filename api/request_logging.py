@@ -82,6 +82,7 @@ def build_result_log_summary(
     elapsed_ms: float | None = None,
     response_bytes: int = 0,
     text_length: int = 0,
+    queue_summary: Any = None,
 ) -> dict[str, Any]:
     """构建不包含密钥和业务正文的接口结果日志摘要。
 
@@ -97,6 +98,7 @@ def build_result_log_summary(
         elapsed_ms: 请求从进入接口到当前节点的总耗时，单位为毫秒。
         response_bytes: 二进制响应体大小，单位为字节。
         text_length: 文本响应字符数。
+        queue_summary: 图片生成任务的请求级排队汇总。
 
     返回值：
         可直接交给结构化日志记录器的安全字段字典。
@@ -117,6 +119,14 @@ def build_result_log_summary(
         summary["requestedCount"] = normalized_request.image_count
     if "generatedCount" in resolved_result:
         summary["generatedCount"] = resolved_result["generatedCount"]
+    if queue_summary is not None:
+        summary["queued"] = bool(queue_summary.queued)
+        summary["queuedImageCount"] = int(
+            queue_summary.queued_image_count
+        )
+        summary["maxQueueWaitMs"] = float(
+            queue_summary.max_queue_wait_ms
+        )
     if has_request_context():
         summary = {
             "traceId": request_trace_id(),

@@ -4,11 +4,20 @@ import logging
 import threading
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Iterator
 
 from services.domain.errors import ErrorCategory, ProviderError
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class QueueAdmission:
+    """记录单张图片任务是否排队以及实际等待时间。"""
+
+    queued: bool
+    wait_ms: float
 
 
 class GenerationGate:
@@ -41,7 +50,7 @@ class GenerationGate:
         timeout_seconds: float,
         request_id: str,
         image_index: int,
-    ) -> Iterator[None]:
+    ) -> Iterator[QueueAdmission]:
         """等待并占用一个图片生成名额。
 
         参数：
@@ -52,27 +61,32 @@ class GenerationGate:
         返回值：
             获得名额后进入的上下文管理器。
         """
-        started_at = time.monotonic()
-        with self._state_lock:
-            self._waiting_count += 1
-            waiting_count = self._waiting_count
-        logger.debug(
-            "image.generation.queue.waiting: %s",
-            {
-                "requestId": request_id,
-                "imageIndex": image_index,
-                "waitingCount": waiting_count,
-                "capacity": self.capacity,
-            },
-        )
-        acquired = False
-        try:
-            acquired = self._semaphore.acquire(timeout=max(timeout_seconds, 0.0))
-        finally:
+        acquired = self._semaphore.acquire(blocking=False)
+        queued = not acquired
+        wait_ms = 0.0
+        if queued:
+            started_at = time.monotonic()
             with self._state_lock:
-                self._waiting_count -= 1
+                self._waiting_count += 1
+                waiting_count = self._waiting_count
+            logger.debug(
+                "image.generation.queue.waiting: %s",
+                {
+                    "requestId": request_id,
+                    "imageIndex": image_index,
+                    "waitingCount": waiting_count,
+                    "capacity": self.capacity,
+                },
+            )
+            try:
+                acquired = self._semaphore.acquire(
+                    timeout=max(timeout_seconds, 0.0)
+                )
+            finally:
+                with self._state_lock:
+                    self._waiting_count -= 1
+            wait_ms = round((time.monotonic() - started_at) * 1000, 2)
 
-        wait_ms = round((time.monotonic() - started_at) * 1000, 2)
         if not acquired:
             logger.warning(
                 "image.generation.queue.timeout: %s",
@@ -105,7 +119,7 @@ class GenerationGate:
             },
         )
         try:
-            yield
+            yield QueueAdmission(queued=queued, wait_ms=wait_ms)
         finally:
             with self._state_lock:
                 self._active_count -= 1
