@@ -18,6 +18,7 @@ from services.domain.errors import (
 from services.domain.provider import ImageProviderResult, TextProviderResult
 from services.gemini_service import GeminiRawResponse
 from services.http import build_request_timeout, get_http_client
+from services.reference_images import materialize_reference_images
 from services.domain.requests import (
     GenerateImageRequest,
     UnderstandImageRequest,
@@ -112,20 +113,21 @@ class OpenRouterProvider:
         返回值：
             包含标准图片结果、模型和耗时的服务商结果。
         """
+        prepared_request = materialize_reference_images(request, self._settings)
         body: dict[str, Any] = {
             "model": provider_model,
-            "prompt": request.prompt,
+            "prompt": prepared_request.prompt,
             "n": 1,
-            "resolution": request.image_size,
+            "resolution": prepared_request.image_size,
         }
-        if request.aspect_ratio:
-            body["aspect_ratio"] = request.aspect_ratio
-        input_references = _build_input_references(request)
+        if prepared_request.aspect_ratio:
+            body["aspect_ratio"] = prepared_request.aspect_ratio
+        input_references = _build_input_references(prepared_request)
         if input_references:
             body["input_references"] = input_references
 
         response, elapsed_ms = self._post(
-            "/images", body, request.request_id, timeout_seconds
+            "/images", body, prepared_request.request_id, timeout_seconds
         )
         raw_response = GeminiRawResponse(
             status_code=response.status_code,

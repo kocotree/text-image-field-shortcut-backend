@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 import httpx
 
 from services.domain.errors import ErrorCategory, ProviderError, provider_error_from_httpx
 from services.model_registry import load_model_registry
+from services.http import FetchedAsset
 from services.providers.openrouter import OpenRouterProvider
 from services.domain.requests import GenerateImageRequest, UnderstandImageRequest
 from services.settings import AppSettings, OssSettings
@@ -124,7 +126,15 @@ class OpenRouterProviderTestCase(unittest.TestCase):
             raw_payload={},
         )
 
-        with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        with (
+            patch("services.reference_images.build_asset_fetcher") as asset_fetcher,
+            httpx.Client(transport=httpx.MockTransport(handler)) as client,
+        ):
+            asset_fetcher.return_value.fetch.return_value = FetchedAsset(
+                body=b"reference-image",
+                content_type="image/png",
+                final_url="https://assets.example/reference.png",
+            )
             provider = OpenRouterProvider(
                 _build_settings(),
                 "https://openrouter.example/api/v1",
@@ -150,7 +160,9 @@ class OpenRouterProviderTestCase(unittest.TestCase):
             payload["input_references"][0],
             {
                 "type": "image_url",
-                "image_url": {"url": "https://assets.example/reference.png"},
+                "image_url": {
+                    "url": "data:image/png;base64,cmVmZXJlbmNlLWltYWdl"
+                },
             },
         )
 
