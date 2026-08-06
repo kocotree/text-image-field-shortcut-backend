@@ -72,6 +72,7 @@ class RoutingSettings:
 class ImageGenerationSettings:
     max_count: int = 5
     max_concurrency: int = 5
+    queue_timeout_seconds: float = 300.0
 
 
 @dataclass(frozen=True)
@@ -191,6 +192,9 @@ def get_app_settings() -> AppSettings:
             max_count=_read_positive_int("IMAGE_GENERATION_MAX_COUNT", 5),
             max_concurrency=_read_positive_int(
                 "IMAGE_GENERATION_MAX_CONCURRENCY", 5
+            ),
+            queue_timeout_seconds=_read_positive_float(
+                "IMAGE_GENERATION_QUEUE_TIMEOUT_SECONDS", 300.0
             ),
         ),
         circuit=CircuitBreakerSettings(

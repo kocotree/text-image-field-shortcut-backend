@@ -10,7 +10,9 @@ from unittest.mock import patch
 from flask import Flask, request
 
 from api.parsers import parse_generate_image_request
+from services.domain.errors import ProviderError
 from services.domain.requests import GenerateImageRequest
+from services.generation_gate import GenerationGate
 from services.gemini_service import GeminiRawResponse
 from services.http import FetchedAsset
 from services.pipelines.image import (
@@ -148,9 +150,10 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
         started = threading.Barrier(2)
         received_prompts = {}
 
-        def generate_image(item_request):
+        def generate_image(item_request, *, deadline=None):
             item_index = int(item_request.request_id.rsplit(":", 1)[1]) - 1
             received_prompts[item_index] = item_request.prompt
+            self.assertIsNotNone(deadline)
             started.wait(timeout=1)
             provider_result = SimpleNamespace(
                 public_model="gemini-3.1-flash-image",
@@ -168,9 +171,11 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
             )
 
         settings = SimpleNamespace(
+            routing=SimpleNamespace(request_deadline_seconds=30),
             image_generation=SimpleNamespace(
                 max_count=5,
                 max_concurrency=5,
+                queue_timeout_seconds=10,
             )
         )
         get_app_settings.return_value = settings
@@ -254,9 +259,11 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
             image_count=6,
         )
         get_app_settings.return_value = SimpleNamespace(
+            routing=SimpleNamespace(request_deadline_seconds=30),
             image_generation=SimpleNamespace(
                 max_count=5,
                 max_concurrency=5,
+                queue_timeout_seconds=10,
             )
         )
 
@@ -310,9 +317,11 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
             image_count=2,
         )
         settings = SimpleNamespace(
+            routing=SimpleNamespace(request_deadline_seconds=30),
             image_generation=SimpleNamespace(
                 max_count=5,
                 max_concurrency=5,
+                queue_timeout_seconds=10,
             ),
         )
         get_app_settings.return_value = settings
@@ -322,7 +331,7 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
             final_url="https://assets.example/reference.png",
         )
 
-        def generate_image(item_request):
+        def generate_image(item_request, *, deadline=None):
             self.assertEqual(item_request.file_urls, [])
             self.assertEqual(item_request.files[0].content, b"reference-image")
             return SimpleNamespace(
@@ -365,6 +374,28 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
             build_failover_router.return_value.generate_image.call_count,
             2,
         )
+
+
+class GenerationGateTestCase(unittest.TestCase):
+    def test_queue_timeout_returns_retryable_local_capacity_error(self) -> None:
+        gate = GenerationGate(1)
+
+        with gate.acquire(
+            timeout_seconds=0.1,
+            request_id="request-queue",
+            image_index=0,
+        ):
+            with self.assertRaisesRegex(ProviderError, "排队超时") as raised:
+                with gate.acquire(
+                    timeout_seconds=0.01,
+                    request_id="request-queue",
+                    image_index=1,
+                ):
+                    pass
+
+        self.assertTrue(raised.exception.retryable)
+
+
 class MultiImageRequestParserTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.app = Flask(__name__)

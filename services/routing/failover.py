@@ -118,17 +118,30 @@ class FailoverRouter:
             "providers": provider_states,
         }
 
-    def generate_image(self, request: GenerateImageRequest) -> ImageRouteResult:
+    def generate_image(
+        self,
+        request: GenerateImageRequest,
+        *,
+        deadline: float | None = None,
+    ) -> ImageRouteResult:
         """执行图片生成主备路由。
 
         参数：
             request: 已完成业务校验的图片生成请求。
+            deadline: 上层请求允许使用的单调时钟截止时间。
 
         返回值：
             包含服务商结果、是否兜底和完整尝试链路的路由结果。
         """
         public_model = self._registry.resolve(request.model)
-        deadline = time.monotonic() + self._settings.routing.request_deadline_seconds
+        configured_deadline = (
+            time.monotonic() + self._settings.routing.request_deadline_seconds
+        )
+        resolved_deadline = (
+            min(deadline, configured_deadline)
+            if deadline is not None
+            else configured_deadline
+        )
         attempts: list[RouteAttempt] = []
         errors: list[ProviderError] = []
 
@@ -147,7 +160,7 @@ class FailoverRouter:
         result = self._route(
             capability="image_generation",
             public_model=public_model,
-            deadline=deadline,
+            deadline=resolved_deadline,
             invoke=invoke,
             is_empty=lambda item: not any(
                 asset.asset_type in {"binary_file", "image_base64", "image_url"}
@@ -462,7 +475,6 @@ class FailoverRouter:
                     provider_error,
                     request_id,
                 )
-
         if len({error.provider for error in errors}) > 1:
             if self._event_reporter:
                 self._event_reporter.on_all_providers_failed(

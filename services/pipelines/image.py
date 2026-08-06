@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 
 from services.domain.requests import GenerateImageRequest, RequestValidationError
+from services.generation_gate import GenerationGate, get_generation_gate
 from services.http import build_asset_fetcher
 from services.oss_service import upload_asset_to_oss
 from services.reference_images import materialize_reference_images
@@ -50,6 +52,9 @@ def _generate_batch_item(
     router: FailoverRouter,
     request_data: GenerateImageRequest,
     index: int,
+    generation_gate: GenerationGate,
+    deadline: float,
+    queue_timeout_seconds: float,
 ) -> GeneratedBatchItem:
     """执行单张图片生成任务。
 
@@ -57,6 +62,9 @@ def _generate_batch_item(
         router: 已完成配置的主备服务商路由器。
         request_data: 当前批次共用的图片生成请求。
         index: 当前图片在批次中的零基序号。
+        generation_gate: 当前进程共享的图片生成并发闸门。
+        deadline: 当前 HTTP 请求允许使用的单调时钟截止时间。
+        queue_timeout_seconds: 当前任务允许排队等待的最大秒数。
 
     返回值：
         包含单张图片及其路由信息的批次结果。
@@ -82,7 +90,14 @@ def _generate_batch_item(
         ),
         image_count=1,
     )
-    route_result = router.generate_image(item_request)
+    remaining_seconds = deadline - time.monotonic()
+    wait_seconds = min(queue_timeout_seconds, max(remaining_seconds, 0.0))
+    with generation_gate.acquire(
+        timeout_seconds=wait_seconds,
+        request_id=request_data.request_id,
+        image_index=index,
+    ):
+        route_result = router.generate_image(item_request, deadline=deadline)
     provider_result = route_result.provider_result
     assets = provider_result.result.assets
     if len(assets) > 1:
@@ -133,8 +148,12 @@ def _generate_batch(
             f"{settings.image_generation.max_count}."
         )
 
+    deadline = time.monotonic() + settings.routing.request_deadline_seconds
     prepared_request = materialize_reference_images(request_data, settings)
     router = build_failover_router(settings)
+    generation_gate = get_generation_gate(
+        settings.image_generation.max_concurrency
+    )
     worker_count = min(
         prepared_request.image_count,
         settings.image_generation.max_concurrency,
@@ -149,7 +168,16 @@ def _generate_batch(
     )
 
     if prepared_request.image_count == 1:
-        results = [_generate_batch_item(router, prepared_request, 0)]
+        results = [
+            _generate_batch_item(
+                router,
+                prepared_request,
+                0,
+                generation_gate,
+                deadline,
+                settings.image_generation.queue_timeout_seconds,
+            )
+        ]
     else:
         ordered_results: list[GeneratedBatchItem | None] = [
             None
@@ -164,6 +192,9 @@ def _generate_batch(
                     router,
                     prepared_request,
                     index,
+                    generation_gate,
+                    deadline,
+                    settings.image_generation.queue_timeout_seconds,
                 ): index
                 for index in range(prepared_request.image_count)
             }
@@ -304,10 +335,25 @@ def generate_image_only(request_data: GenerateImageRequest) -> GeneratedImageFil
             "imageCount greater than 1 is only supported by /api/process-image."
         )
     settings = get_app_settings()
+    deadline = time.monotonic() + settings.routing.request_deadline_seconds
     prepared_request = materialize_reference_images(request_data, settings)
-    route_result = build_failover_router(settings).generate_image(
-        prepared_request
+    generation_gate = get_generation_gate(
+        settings.image_generation.max_concurrency
     )
+    remaining_seconds = deadline - time.monotonic()
+    wait_seconds = min(
+        settings.image_generation.queue_timeout_seconds,
+        max(remaining_seconds, 0.0),
+    )
+    with generation_gate.acquire(
+        timeout_seconds=wait_seconds,
+        request_id=request_data.request_id,
+        image_index=0,
+    ):
+        route_result = build_failover_router(settings).generate_image(
+            prepared_request,
+            deadline=deadline,
+        )
     provider_result = route_result.provider_result
     asset = provider_result.result.assets[0]
     return GeneratedImageFile(
