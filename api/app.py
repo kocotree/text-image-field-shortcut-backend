@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from functools import partial
 
 from flask import Flask, Response, request
 
@@ -58,7 +59,14 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.before_request(start_request_context)
     if settings.image_generation.trim_memory_after_request:
-        app.after_request(_schedule_image_request_memory_release)
+        app.after_request(
+            partial(
+                _schedule_image_request_memory_release,
+                rss_threshold_bytes=(
+                    settings.image_generation.trim_rss_threshold_bytes
+                ),
+            )
+        )
     app.register_blueprint(health_blueprint)
     app.register_blueprint(image_blueprint)
     app.register_blueprint(understanding_blueprint)
@@ -69,11 +77,16 @@ def create_app() -> Flask:
     return app
 
 
-def _schedule_image_request_memory_release(response: Response) -> Response:
+def _schedule_image_request_memory_release(
+    response: Response,
+    *,
+    rss_threshold_bytes: int,
+) -> Response:
     """在图片响应发送完毕后安排进程内存回收。
 
     参数：
         response: Flask 已构建、尚未发送完成的响应对象。
+        rss_threshold_bytes: 允许触发 glibc 堆裁剪的进程 RSS 下限。
 
     返回值：
         已注册关闭回调的原响应对象；非图片接口保持不变。
@@ -86,6 +99,7 @@ def _schedule_image_request_memory_release(response: Response) -> Response:
         lambda: release_process_memory(
             request_path=request_path,
             status_code=status_code,
+            rss_threshold_bytes=rss_threshold_bytes,
         )
     )
     return response

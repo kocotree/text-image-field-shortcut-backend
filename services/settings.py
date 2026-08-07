@@ -74,6 +74,7 @@ class ImageGenerationSettings:
     max_concurrency: int = 5
     queue_timeout_seconds: float = 420.0
     trim_memory_after_request: bool = False
+    trim_rss_threshold_bytes: int = 512 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -199,6 +200,11 @@ def get_app_settings() -> AppSettings:
             ),
             trim_memory_after_request=_read_bool(
                 "MEMORY_TRIM_AFTER_IMAGE_REQUEST", False
+            ),
+            trim_rss_threshold_bytes=(
+                _read_positive_int("MEMORY_TRIM_RSS_THRESHOLD_MB", 512)
+                * 1024
+                * 1024
             ),
         ),
         circuit=CircuitBreakerSettings(

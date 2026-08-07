@@ -16,17 +16,32 @@ class MemoryReleaseResult:
     rss_after_bytes: int | None
 
 
-def release_process_memory(*, request_path: str, status_code: int) -> MemoryReleaseResult:
+def release_process_memory(
+    *,
+    request_path: str,
+    status_code: int,
+    rss_threshold_bytes: int,
+) -> MemoryReleaseResult:
     """归还图片请求结束后由 glibc 保留的空闲堆内存。
 
     参数：
         request_path: 触发回收的图片接口路径。
         status_code: 已发送响应的 HTTP 状态码。
+        rss_threshold_bytes: 允许触发 glibc 堆裁剪的进程 RSS 下限。
 
     返回值：
         包含堆裁剪结果和回收前后 RSS 的诊断结果。
     """
     rss_before_bytes = _read_current_rss_bytes()
+    if (
+        rss_before_bytes is None
+        or rss_before_bytes < rss_threshold_bytes
+    ):
+        return MemoryReleaseResult(
+            malloc_trimmed=False,
+            rss_before_bytes=rss_before_bytes,
+            rss_after_bytes=rss_before_bytes,
+        )
     malloc_trimmed = _trim_linux_heap()
     rss_after_bytes = _read_current_rss_bytes()
     released_bytes = None
@@ -43,6 +58,7 @@ def release_process_memory(*, request_path: str, status_code: int) -> MemoryRele
         {
             "path": request_path,
             "statusCode": status_code,
+            "rssThresholdBytes": rss_threshold_bytes,
             "mallocTrimmed": malloc_trimmed,
             "rssBeforeBytes": rss_before_bytes,
             "rssAfterBytes": rss_after_bytes,
