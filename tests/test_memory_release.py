@@ -19,9 +19,8 @@ class MemoryReleaseTestCase(unittest.TestCase):
 
         self.assertTrue(settings.image_generation.trim_memory_after_request)
 
-    def test_release_collects_gc_and_trims_linux_heap(self) -> None:
+    def test_release_trims_linux_heap(self) -> None:
         with (
-            patch("services.memory_release.gc.collect", return_value=7),
             patch(
                 "services.memory_release._trim_linux_heap",
                 return_value=True,
@@ -37,7 +36,6 @@ class MemoryReleaseTestCase(unittest.TestCase):
                 status_code=200,
             )
 
-        self.assertEqual(result.gc_collected, 7)
         self.assertTrue(result.malloc_trimmed)
         self.assertEqual(result.rss_before_bytes, 200)
         self.assertEqual(result.rss_after_bytes, 120)

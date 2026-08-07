@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ctypes
-import gc
 import logging
 import sys
 from dataclasses import dataclass
@@ -12,24 +11,22 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class MemoryReleaseResult:
-    gc_collected: int
     malloc_trimmed: bool
     rss_before_bytes: int | None
     rss_after_bytes: int | None
 
 
 def release_process_memory(*, request_path: str, status_code: int) -> MemoryReleaseResult:
-    """回收图片请求结束后的进程空闲内存并记录诊断数据。
+    """归还图片请求结束后由 glibc 保留的空闲堆内存。
 
     参数：
         request_path: 触发回收的图片接口路径。
         status_code: 已发送响应的 HTTP 状态码。
 
     返回值：
-        包含 GC 回收数量、堆裁剪结果和回收前后 RSS 的诊断结果。
+        包含堆裁剪结果和回收前后 RSS 的诊断结果。
     """
     rss_before_bytes = _read_current_rss_bytes()
-    gc_collected = gc.collect()
     malloc_trimmed = _trim_linux_heap()
     rss_after_bytes = _read_current_rss_bytes()
     released_bytes = None
@@ -37,7 +34,6 @@ def release_process_memory(*, request_path: str, status_code: int) -> MemoryRele
         released_bytes = max(0, rss_before_bytes - rss_after_bytes)
 
     result = MemoryReleaseResult(
-        gc_collected=gc_collected,
         malloc_trimmed=malloc_trimmed,
         rss_before_bytes=rss_before_bytes,
         rss_after_bytes=rss_after_bytes,
@@ -47,7 +43,6 @@ def release_process_memory(*, request_path: str, status_code: int) -> MemoryRele
         {
             "path": request_path,
             "statusCode": status_code,
-            "gcCollected": gc_collected,
             "mallocTrimmed": malloc_trimmed,
             "rssBeforeBytes": rss_before_bytes,
             "rssAfterBytes": rss_after_bytes,
@@ -68,7 +63,6 @@ def _trim_linux_heap() -> bool:
         malloc_trim.restype = ctypes.c_int
         return bool(malloc_trim(0))
     except (AttributeError, OSError):
-        logger.warning("memory.image_request.malloc_trim.unavailable")
         return False
 
 
