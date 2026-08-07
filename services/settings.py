@@ -73,6 +73,7 @@ class ImageGenerationSettings:
     max_count: int = 5
     max_concurrency: int = 5
     queue_timeout_seconds: float = 420.0
+    trim_memory_after_request: bool = False
 
 
 @dataclass(frozen=True)
@@ -195,6 +196,9 @@ def get_app_settings() -> AppSettings:
             ),
             queue_timeout_seconds=_read_positive_float(
                 "IMAGE_GENERATION_QUEUE_TIMEOUT_SECONDS", 420.0
+            ),
+            trim_memory_after_request=_read_bool(
+                "MEMORY_TRIM_AFTER_IMAGE_REQUEST", False
             ),
         ),
         circuit=CircuitBreakerSettings(

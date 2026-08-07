@@ -3,14 +3,18 @@ from __future__ import annotations
 import logging
 import os
 
-from flask import Flask
+from flask import Flask, Response, request
 
 from api.request_logging import start_request_context
 from api.routes import health_blueprint, image_blueprint, understanding_blueprint
 from services.model_registry import load_provider_configuration
+from services.memory_release import release_process_memory
 from services.settings import get_app_settings
 
 logger = logging.getLogger(__name__)
+IMAGE_GENERATION_PATHS = frozenset(
+    {"/api/process-image", "/api/generate-image"}
+)
 
 
 def configure_logging() -> None:
@@ -53,6 +57,8 @@ def create_app() -> Flask:
 
     app = Flask(__name__)
     app.before_request(start_request_context)
+    if settings.image_generation.trim_memory_after_request:
+        app.after_request(_schedule_image_request_memory_release)
     app.register_blueprint(health_blueprint)
     app.register_blueprint(image_blueprint)
     app.register_blueprint(understanding_blueprint)
@@ -61,3 +67,25 @@ def create_app() -> Flask:
         {"blueprintCount": 3},
     )
     return app
+
+
+def _schedule_image_request_memory_release(response: Response) -> Response:
+    """在图片响应发送完毕后安排进程内存回收。
+
+    参数：
+        response: Flask 已构建、尚未发送完成的响应对象。
+
+    返回值：
+        已注册关闭回调的原响应对象；非图片接口保持不变。
+    """
+    request_path = request.path
+    if request_path not in IMAGE_GENERATION_PATHS:
+        return response
+    status_code = response.status_code
+    response.call_on_close(
+        lambda: release_process_memory(
+            request_path=request_path,
+            status_code=status_code,
+        )
+    )
+    return response
