@@ -48,7 +48,7 @@ OPENROUTER_API_KEY=
 FALLBACK_ENABLED=true
 IMAGE_GENERATION_MAX_COUNT=5
 IMAGE_GENERATION_MAX_CONCURRENCY=5
-IMAGE_GENERATION_QUEUE_TIMEOUT_SECONDS=300
+IMAGE_GENERATION_QUEUE_TIMEOUT_SECONDS=420
 
 OSS_ENDPOINT=oss-cn-hangzhou.aliyuncs.com
 OSS_ACCESS_KEY_ID=
@@ -65,7 +65,7 @@ FEISHU_ALERT_KEYWORD=
 
 熔断、兜底告警计数和通知冷却使用应用进程内的线程安全内存。Gunicorn 以单 worker、多线程方式运行，不需要额外的状态中间件；应用进程重启后状态会清空。
 
-`IMAGE_GENERATION_MAX_CONCURRENCY` 表示当前进程同时执行的单张图片生成任务上限，所有 HTTP 请求共享同一个并发闸门。超过上限的任务在内存中等待，最长等待时间由 `IMAGE_GENERATION_QUEUE_TIMEOUT_SECONDS` 控制，并且不会超过模型请求总时限。当前部署使用单 Gunicorn worker，因此该限制就是整个服务实例的生成并发上限。
+`IMAGE_GENERATION_MAX_CONCURRENCY` 表示当前进程同时执行的单张图片生成任务上限，所有 HTTP 请求共享同一个并发闸门。超过上限的任务在内存中等待，最长等待时间由 `IMAGE_GENERATION_QUEUE_TIMEOUT_SECONDS` 控制。任务获得生成名额后，才开始计算 `MODEL_REQUEST_DEADLINE_SECONDS` 定义的模型生成、重试和兜底预算。当前部署使用单 Gunicorn worker，因此该限制就是整个服务实例的生成并发上限。
 
 ## 日志
 

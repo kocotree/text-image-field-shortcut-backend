@@ -5,7 +5,7 @@ import json
 import threading
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from flask import Flask, request
 
@@ -17,6 +17,7 @@ from services.gemini_service import GeminiRawResponse
 from services.http import FetchedAsset
 from services.pipelines.image import (
     _build_batch_prompt,
+    _generate_batch_item,
     generate_image_only,
     process_image_request,
 )
@@ -25,6 +26,7 @@ from services.response_normalizer import (
     NormalizedModelResult,
     normalize_gemini_response,
 )
+from services.settings import get_app_settings as load_app_settings
 
 
 def _build_json_response(payload: dict[str, object]) -> GeminiRawResponse:
@@ -440,6 +442,89 @@ class GenerationGateTestCase(unittest.TestCase):
                     pass
 
         self.assertTrue(raised.exception.retryable)
+
+
+class GenerationBudgetTestCase(unittest.TestCase):
+    def test_default_queue_timeout_is_420_seconds(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            settings = load_app_settings()
+
+        self.assertEqual(
+            settings.image_generation.queue_timeout_seconds,
+            420.0,
+        )
+
+    @patch("services.pipelines.image.time.monotonic")
+    def test_execution_budget_starts_after_queue_admission(self, monotonic) -> None:
+        request_data = GenerateImageRequest(
+            request_id="request-budget",
+            prompt="生成图片",
+            model="gemini-3.1-flash-image",
+            aspect_ratio="1:1",
+            image_size="1K",
+            input_type="empty",
+            file_urls=[],
+            files=[],
+            raw_payload={},
+            image_count=1,
+        )
+        asset = NormalizedGeneratedAsset(
+            asset_type="image_base64",
+            mime_type="image/png",
+            file_name="generated.png",
+            source_kind="bytes",
+            payload=b"image",
+        )
+        router = MagicMock()
+        router.generate_image.return_value = SimpleNamespace(
+            provider_result=SimpleNamespace(
+                public_model="gemini-3.1-flash-image",
+                provider="easyrouter",
+                result=NormalizedModelResult(
+                    raw_response_type="json_base64",
+                    assets=[asset],
+                    text_output="",
+                    raw_meta={},
+                ),
+            ),
+            fallback_used=False,
+        )
+        generation_gate = MagicMock()
+        gate_entered = False
+
+        def enter_gate():
+            nonlocal gate_entered
+            gate_entered = True
+            return SimpleNamespace(queued=True, wait_ms=12_000.0)
+
+        generation_gate.acquire.return_value.__enter__.side_effect = enter_gate
+
+        def current_time() -> float:
+            self.assertTrue(gate_entered)
+            return 100.0
+
+        monotonic.side_effect = current_time
+
+        result = _generate_batch_item(
+            router,
+            request_data,
+            0,
+            generation_gate,
+            execution_timeout_seconds=390.0,
+            queue_timeout_seconds=420.0,
+        )
+
+        generation_gate.acquire.assert_called_once_with(
+            timeout_seconds=420.0,
+            request_id="request-budget",
+            image_index=0,
+        )
+        self.assertEqual(
+            router.generate_image.call_args.kwargs["deadline"],
+            490.0,
+        )
+        self.assertTrue(result.queued)
+        self.assertEqual(result.queue_wait_ms, 12_000.0)
 
 
 class MultiImageRequestParserTestCase(unittest.TestCase):
