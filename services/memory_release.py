@@ -8,6 +8,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from services.generation_gate import GenerationGate
+
 logger = logging.getLogger(__name__)
 _trim_lock = threading.Lock()
 _last_trim_at = 0.0
@@ -26,6 +28,7 @@ def release_process_memory(
     status_code: int,
     rss_threshold_bytes: int,
     cooldown_seconds: float,
+    generation_gate: GenerationGate,
 ) -> MemoryReleaseResult:
     """归还图片请求结束后由 glibc 保留的空闲堆内存。
 
@@ -34,6 +37,7 @@ def release_process_memory(
         status_code: 已发送响应的 HTTP 状态码。
         rss_threshold_bytes: 允许触发 glibc 堆裁剪的进程 RSS 下限。
         cooldown_seconds: 两次堆裁剪之间需要间隔的最短秒数。
+        generation_gate: 用于确认当前没有执行中或等待中的图片任务。
 
     返回值：
         包含堆裁剪结果和回收前后 RSS 的诊断结果。
@@ -63,9 +67,16 @@ def release_process_memory(
                 rss_before_bytes=rss_before_bytes,
                 rss_after_bytes=rss_before_bytes,
             )
-        malloc_trimmed = _trim_linux_heap()
-        _last_trim_at = now
-        rss_after_bytes = _read_current_rss_bytes()
+        with generation_gate.idle_guard() as generation_idle:
+            if not generation_idle:
+                return MemoryReleaseResult(
+                    malloc_trimmed=False,
+                    rss_before_bytes=rss_before_bytes,
+                    rss_after_bytes=rss_before_bytes,
+                )
+            malloc_trimmed = _trim_linux_heap()
+            _last_trim_at = now
+            rss_after_bytes = _read_current_rss_bytes()
     finally:
         _trim_lock.release()
     released_bytes = None

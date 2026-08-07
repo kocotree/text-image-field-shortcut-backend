@@ -44,6 +44,25 @@ class GenerationGate:
             return self._active_count == 0 and self._waiting_count == 0
 
     @contextmanager
+    def idle_guard(self) -> Iterator[bool]:
+        """仅在生成闸门空闲时占用状态锁。
+
+        返回值：
+            是否成功确认生成任务与等待队列均为空的上下文管理器。
+        """
+        acquired = self._state_lock.acquire(blocking=False)
+        if not acquired:
+            yield False
+            return
+        try:
+            if self._active_count != 0 or self._waiting_count != 0:
+                yield False
+                return
+            yield True
+        finally:
+            self._state_lock.release()
+
+    @contextmanager
     def acquire(
         self,
         *,

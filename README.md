@@ -70,7 +70,7 @@ FEISHU_ALERT_KEYWORD=
 
 `IMAGE_GENERATION_MAX_CONCURRENCY` 表示当前进程同时执行的单张图片生成任务上限，所有 HTTP 请求共享同一个并发闸门。超过上限的任务在内存中等待，最长等待时间由 `IMAGE_GENERATION_QUEUE_TIMEOUT_SECONDS` 控制。任务获得生成名额后，才开始计算 `MODEL_REQUEST_DEADLINE_SECONDS` 定义的模型生成、重试和兜底预算。当前部署使用单 Gunicorn worker，因此该限制就是整个服务实例的生成并发上限。
 
-`MEMORY_TRIM_AFTER_IMAGE_REQUEST` 是内存回收开关，默认关闭。启用后，服务会在图片响应发送完成且进程 RSS 达到 `MEMORY_TRIM_RSS_THRESHOLD_MB` 时，在 Linux 容器内调用 `malloc_trim(0)` 归还 glibc 保留的空闲堆页。进程通过非阻塞互斥锁避免重复回收，并按照 `MEMORY_TRIM_COOLDOWN_SECONDS` 限制回收频率。日志 `memory.image_request.release.completed` 包含触发阈值、冷却时间与回收前后 RSS；该操作可能短暂阻塞进程。
+`MEMORY_TRIM_AFTER_IMAGE_REQUEST` 是内存回收开关，默认关闭。启用后，服务会在图片响应发送完成、生成任务与等待队列均为空且进程 RSS 达到 `MEMORY_TRIM_RSS_THRESHOLD_MB` 时，在 Linux 容器内调用 `malloc_trim(0)` 归还 glibc 保留的空闲堆页。进程通过非阻塞互斥锁避免重复回收，并按照 `MEMORY_TRIM_COOLDOWN_SECONDS` 限制回收频率。裁剪期间新的生成任务会等待状态锁释放后再调用服务商。日志 `memory.image_request.release.completed` 包含触发阈值、冷却时间与回收前后 RSS；该操作可能短暂阻塞进程。
 
 ## 日志
 
