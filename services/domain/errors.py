@@ -41,6 +41,20 @@ class ProviderError(RuntimeError):
     def __str__(self) -> str:
         return self.message
 
+    def detached(self) -> ProviderError:
+        """创建不携带底层异常、调用栈和大型 HTTP 请求体的错误副本。"""
+        return ProviderError(
+            provider=self.provider,
+            category=self.category,
+            message=self.message,
+            status_code=self.status_code,
+            retryable=self.retryable,
+            retry_after_seconds=self.retry_after_seconds,
+            request_id=self.request_id,
+            provider_error_type=self.provider_error_type,
+            counts_toward_circuit=self.counts_toward_circuit,
+        )
+
 
 def _read_retry_after(headers: Any) -> float | None:
     value = str(headers.get("retry-after", "") or "").strip()

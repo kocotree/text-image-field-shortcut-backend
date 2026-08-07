@@ -174,11 +174,14 @@ class FailoverRouterTestCase(unittest.TestCase):
         self.assertEqual(primary.calls[0][0], "gemini-3.1-flash-image")
 
     def test_retryable_primary_error_routes_to_openrouter(self) -> None:
+        underlying_error = RuntimeError("request failed")
+        underlying_error.request_body = b"large-request-body"
         primary_error = ProviderError(
             provider="easyrouter",
             category=ErrorCategory.TIMEOUT,
             message="timeout",
             retryable=True,
+            cause=underlying_error,
         )
         fallback_result = _image_result(
             "openrouter",
@@ -205,6 +208,10 @@ class FailoverRouterTestCase(unittest.TestCase):
             [event[0] for event in reporter.events],
             ["provider_failure", "fallback_used"],
         )
+        reported_error = reporter.events[0][1][3]
+        self.assertIsNot(reported_error, primary_error)
+        self.assertIsNone(reported_error.cause)
+        self.assertIsNone(reported_error.__traceback__)
 
     def test_non_retryable_error_does_not_call_fallback(self) -> None:
         primary_error = ProviderError(

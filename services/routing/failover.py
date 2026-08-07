@@ -399,8 +399,9 @@ class FailoverRouter:
                     return result
                 except ProviderError as error:
                     elapsed_ms = round((time.perf_counter() - started_at) * 1000, 2)
-                    errors.append(error)
-                    provider_error = error
+                    detached_error = error.detached()
+                    errors.append(detached_error)
+                    provider_error = detached_error
                     attempts.append(
                         RouteAttempt(
                             provider=provider_name,
