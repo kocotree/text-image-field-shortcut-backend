@@ -65,6 +65,9 @@ def create_app() -> Flask:
                 rss_threshold_bytes=(
                     settings.image_generation.trim_rss_threshold_bytes
                 ),
+                cooldown_seconds=(
+                    settings.image_generation.trim_cooldown_seconds
+                ),
             )
         )
     app.register_blueprint(health_blueprint)
@@ -81,12 +84,14 @@ def _schedule_image_request_memory_release(
     response: Response,
     *,
     rss_threshold_bytes: int,
+    cooldown_seconds: float,
 ) -> Response:
     """在图片响应发送完毕后安排进程内存回收。
 
     参数：
         response: Flask 已构建、尚未发送完成的响应对象。
         rss_threshold_bytes: 允许触发 glibc 堆裁剪的进程 RSS 下限。
+        cooldown_seconds: 两次堆裁剪之间需要间隔的最短秒数。
 
     返回值：
         已注册关闭回调的原响应对象；非图片接口保持不变。
@@ -100,6 +105,7 @@ def _schedule_image_request_memory_release(
             request_path=request_path,
             status_code=status_code,
             rss_threshold_bytes=rss_threshold_bytes,
+            cooldown_seconds=cooldown_seconds,
         )
     )
     return response

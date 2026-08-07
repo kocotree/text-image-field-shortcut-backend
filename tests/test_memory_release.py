@@ -16,6 +16,7 @@ class MemoryReleaseTestCase(unittest.TestCase):
             {
                 "MEMORY_TRIM_AFTER_IMAGE_REQUEST": "true",
                 "MEMORY_TRIM_RSS_THRESHOLD_MB": "640",
+                "MEMORY_TRIM_COOLDOWN_SECONDS": "90",
             },
         ):
             settings = get_app_settings()
@@ -24,6 +25,10 @@ class MemoryReleaseTestCase(unittest.TestCase):
         self.assertEqual(
             settings.image_generation.trim_rss_threshold_bytes,
             640 * 1024 * 1024,
+        )
+        self.assertEqual(
+            settings.image_generation.trim_cooldown_seconds,
+            90,
         )
 
     def test_release_trims_linux_heap(self) -> None:
@@ -36,12 +41,15 @@ class MemoryReleaseTestCase(unittest.TestCase):
                 "services.memory_release._read_current_rss_bytes",
                 side_effect=[200, 120],
             ),
+            patch("services.memory_release._last_trim_at", 0),
+            patch("services.memory_release.time.monotonic", return_value=100),
             self.assertLogs("services.memory_release", level="INFO") as captured,
         ):
             result = release_process_memory(
                 request_path="/api/process-image",
                 status_code=200,
                 rss_threshold_bytes=150,
+                cooldown_seconds=60,
             )
 
         self.assertTrue(result.malloc_trimmed)
@@ -62,7 +70,54 @@ class MemoryReleaseTestCase(unittest.TestCase):
                 request_path="/api/process-image",
                 status_code=200,
                 rss_threshold_bytes=150,
+                cooldown_seconds=60,
             )
+
+        self.assertFalse(result.malloc_trimmed)
+        trim_heap.assert_not_called()
+
+    def test_release_skips_heap_trim_during_cooldown(self) -> None:
+        with (
+            patch(
+                "services.memory_release._read_current_rss_bytes",
+                return_value=200,
+            ),
+            patch("services.memory_release._trim_linux_heap") as trim_heap,
+            patch("services.memory_release._last_trim_at", 90),
+            patch("services.memory_release.time.monotonic", return_value=100),
+            self.assertNoLogs("services.memory_release", level="INFO"),
+        ):
+            result = release_process_memory(
+                request_path="/api/process-image",
+                status_code=200,
+                rss_threshold_bytes=150,
+                cooldown_seconds=60,
+            )
+
+        self.assertFalse(result.malloc_trimmed)
+        trim_heap.assert_not_called()
+
+    def test_release_skips_heap_trim_when_another_trim_is_running(self) -> None:
+        with (
+            patch(
+                "services.memory_release._read_current_rss_bytes",
+                return_value=200,
+            ),
+            patch("services.memory_release._trim_linux_heap") as trim_heap,
+            self.assertNoLogs("services.memory_release", level="INFO"),
+        ):
+            from services.memory_release import _trim_lock
+
+            _trim_lock.acquire()
+            try:
+                result = release_process_memory(
+                    request_path="/api/process-image",
+                    status_code=200,
+                    rss_threshold_bytes=150,
+                    cooldown_seconds=60,
+                )
+            finally:
+                _trim_lock.release()
 
         self.assertFalse(result.malloc_trimmed)
         trim_heap.assert_not_called()
@@ -87,6 +142,7 @@ class MemoryReleaseTestCase(unittest.TestCase):
             request_path="/api/process-image",
             status_code=403,
             rss_threshold_bytes=512 * 1024 * 1024,
+            cooldown_seconds=60.0,
         )
 
     def test_enabled_app_ignores_non_image_response(self) -> None:

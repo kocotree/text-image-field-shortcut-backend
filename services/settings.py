@@ -75,6 +75,7 @@ class ImageGenerationSettings:
     queue_timeout_seconds: float = 420.0
     trim_memory_after_request: bool = False
     trim_rss_threshold_bytes: int = 512 * 1024 * 1024
+    trim_cooldown_seconds: float = 60.0
 
 
 @dataclass(frozen=True)
@@ -205,6 +206,9 @@ def get_app_settings() -> AppSettings:
                 _read_positive_int("MEMORY_TRIM_RSS_THRESHOLD_MB", 512)
                 * 1024
                 * 1024
+            ),
+            trim_cooldown_seconds=_read_positive_float(
+                "MEMORY_TRIM_COOLDOWN_SECONDS", 60.0
             ),
         ),
         circuit=CircuitBreakerSettings(

@@ -3,10 +3,14 @@ from __future__ import annotations
 import ctypes
 import logging
 import sys
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+_trim_lock = threading.Lock()
+_last_trim_at = 0.0
 
 
 @dataclass(frozen=True)
@@ -21,6 +25,7 @@ def release_process_memory(
     request_path: str,
     status_code: int,
     rss_threshold_bytes: int,
+    cooldown_seconds: float,
 ) -> MemoryReleaseResult:
     """归还图片请求结束后由 glibc 保留的空闲堆内存。
 
@@ -28,6 +33,7 @@ def release_process_memory(
         request_path: 触发回收的图片接口路径。
         status_code: 已发送响应的 HTTP 状态码。
         rss_threshold_bytes: 允许触发 glibc 堆裁剪的进程 RSS 下限。
+        cooldown_seconds: 两次堆裁剪之间需要间隔的最短秒数。
 
     返回值：
         包含堆裁剪结果和回收前后 RSS 的诊断结果。
@@ -42,8 +48,26 @@ def release_process_memory(
             rss_before_bytes=rss_before_bytes,
             rss_after_bytes=rss_before_bytes,
         )
-    malloc_trimmed = _trim_linux_heap()
-    rss_after_bytes = _read_current_rss_bytes()
+    if not _trim_lock.acquire(blocking=False):
+        return MemoryReleaseResult(
+            malloc_trimmed=False,
+            rss_before_bytes=rss_before_bytes,
+            rss_after_bytes=rss_before_bytes,
+        )
+    global _last_trim_at
+    try:
+        now = time.monotonic()
+        if now - _last_trim_at < cooldown_seconds:
+            return MemoryReleaseResult(
+                malloc_trimmed=False,
+                rss_before_bytes=rss_before_bytes,
+                rss_after_bytes=rss_before_bytes,
+            )
+        malloc_trimmed = _trim_linux_heap()
+        _last_trim_at = now
+        rss_after_bytes = _read_current_rss_bytes()
+    finally:
+        _trim_lock.release()
     released_bytes = None
     if rss_before_bytes is not None and rss_after_bytes is not None:
         released_bytes = max(0, rss_before_bytes - rss_after_bytes)
@@ -59,6 +83,7 @@ def release_process_memory(
             "path": request_path,
             "statusCode": status_code,
             "rssThresholdBytes": rss_threshold_bytes,
+            "cooldownSeconds": cooldown_seconds,
             "mallocTrimmed": malloc_trimmed,
             "rssBeforeBytes": rss_before_bytes,
             "rssAfterBytes": rss_after_bytes,
