@@ -339,6 +339,14 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
         def generate_image(item_request, *, deadline=None):
             self.assertEqual(item_request.file_urls, [])
             self.assertEqual(item_request.files[0].content, b"reference-image")
+            self.assertEqual(
+                item_request.files[0].base64_data,
+                base64.b64encode(b"reference-image").decode("ascii"),
+            )
+            self.assertEqual(
+                item_request.files[0].data_url,
+                "data:image/png;base64,cmVmZXJlbmNlLWltYWdl",
+            )
             return SimpleNamespace(
                 provider_result=SimpleNamespace(
                     public_model="gemini-3.1-flash-image",
@@ -378,6 +386,20 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
         self.assertEqual(
             build_failover_router.return_value.generate_image.call_count,
             2,
+        )
+        first_request = build_failover_router.return_value.generate_image.call_args_list[
+            0
+        ].args[0]
+        second_request = build_failover_router.return_value.generate_image.call_args_list[
+            1
+        ].args[0]
+        self.assertIs(
+            first_request.files[0].base64_data,
+            second_request.files[0].base64_data,
+        )
+        self.assertIs(
+            first_request.files[0].data_url,
+            second_request.files[0].data_url,
         )
 
 

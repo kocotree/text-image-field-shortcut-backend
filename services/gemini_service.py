@@ -69,11 +69,11 @@ def _safe_file_name(file_name: str, fallback: str) -> str:
     return clean_name or fallback
 
 
-def _build_inline_data_part(payload: bytes, mime_type: str) -> dict[str, Any]:
+def _build_inline_data_part(base64_data: str, mime_type: str) -> dict[str, Any]:
     return {
         "inline_data": {
             "mime_type": mime_type,
-            "data": base64.b64encode(payload).decode("utf-8"),
+            "data": base64_data,
         }
     }
 
@@ -94,10 +94,13 @@ class PreparedReferenceInput:
     file_name: str
     payload: bytes
     source_ref: str = ""
+    base64_data: str | None = None
     payload_size: int = field(init=False)
 
     def __post_init__(self) -> None:
         self.payload_size = len(self.payload)
+        if self.base64_data is None:
+            self.base64_data = base64.b64encode(self.payload).decode("ascii")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -204,6 +207,7 @@ def _read_file_as_inline_input(uploaded_file: UploadedFileInfo) -> PreparedRefer
         file_name=uploaded_file.file_name,
         payload=file_bytes,
         source_ref=uploaded_file.file_name,
+        base64_data=uploaded_file.base64_data,
     )
 
 
@@ -282,7 +286,10 @@ def _build_gemini_request_body(
     image_size: str,
 ) -> dict[str, Any]:
     parts: list[dict[str, Any]] = [{"text": prompt}]
-    parts.extend(_build_inline_data_part(item.payload, item.mime_type) for item in prepared_inputs)
+    parts.extend(
+        _build_inline_data_part(item.base64_data or "", item.mime_type)
+        for item in prepared_inputs
+    )
     image_config = {
         "imageSize": image_size,
     }
@@ -342,7 +349,10 @@ def _build_gemini_text_request_body(
     prepared_inputs: list[PreparedReferenceInput],
 ) -> dict[str, Any]:
     parts: list[dict[str, Any]] = []
-    parts.extend(_build_inline_data_part(item.payload, item.mime_type) for item in prepared_inputs)
+    parts.extend(
+        _build_inline_data_part(item.base64_data or "", item.mime_type)
+        for item in prepared_inputs
+    )
     if prompt:
         parts.append({"text": prompt})
     return {

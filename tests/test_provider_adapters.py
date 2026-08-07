@@ -10,7 +10,9 @@ import httpx
 from services.domain.errors import ErrorCategory, ProviderError, provider_error_from_httpx
 from services.model_registry import load_model_registry
 from services.http import FetchedAsset
-from services.providers.openrouter import OpenRouterProvider
+from services.gemini_service import build_gemini_invocation_plan
+from services.providers.openrouter import OpenRouterProvider, _build_input_references
+from services.reference_images import materialize_reference_images
 from services.domain.requests import GenerateImageRequest, UnderstandImageRequest
 from services.settings import AppSettings, OssSettings
 
@@ -165,6 +167,52 @@ class OpenRouterProviderTestCase(unittest.TestCase):
                 },
             },
         )
+
+    def test_providers_reuse_materialized_reference_base64(self) -> None:
+        request_data = GenerateImageRequest(
+            request_id="request-shared-reference",
+            prompt="生成图片",
+            model="gemini-3.1-flash-image",
+            aspect_ratio="1:1",
+            image_size="1K",
+            input_type="file_url",
+            file_urls=["https://assets.example/reference.png"],
+            files=[],
+            raw_payload={},
+        )
+        settings = _build_settings()
+        with patch("services.reference_images.build_asset_fetcher") as asset_fetcher:
+            asset_fetcher.return_value.fetch.return_value = FetchedAsset(
+                body=b"reference-image",
+                content_type="image/png",
+                final_url="https://assets.example/reference.png",
+            )
+            prepared_request = materialize_reference_images(request_data, settings)
+
+        reference = prepared_request.files[0]
+        with patch("services.gemini_service.base64.b64encode") as encode:
+            gemini_plan = build_gemini_invocation_plan(
+                prepared_request,
+                settings,
+                "https://easyrouter.example",
+            )
+
+        self.assertEqual(
+            gemini_plan.request_body["contents"][0]["parts"][1]["inline_data"][
+                "data"
+            ],
+            reference.base64_data,
+        )
+        encode.assert_not_called()
+
+        with patch("services.providers.openrouter.base64.b64encode") as encode:
+            input_references = _build_input_references(prepared_request)
+
+        self.assertIs(
+            input_references[0]["image_url"]["url"],
+            reference.data_url,
+        )
+        encode.assert_not_called()
 
     def test_understand_image_uses_chat_completions_schema(self) -> None:
         captured_request: httpx.Request | None = None

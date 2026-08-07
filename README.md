@@ -108,7 +108,7 @@ Invoke-WebRequest http://127.0.0.1:5000/health
 提示词中的分图要求并禁止拼图。生成结果按任务序号上传，响应中的 `ossUrls`
 包含全部图片地址，`ossUrl` 指向第一张图片。
 
-请求中的参考图会在拆分多图任务之前下载一次并保存在当前请求的内存中。EasyRouter 使用 Gemini `inline_data`，OpenRouter 使用 Base64 Data URL；同一批次的生成任务共享图片字节，请求结束后不保留参考图缓存。
+请求中的参考图会在拆分多图任务之前下载和 Base64 编码一次，并保存在当前请求的内存中。EasyRouter 使用 Gemini `inline_data`，OpenRouter 使用 Base64 Data URL；同一批次的生成任务共享图片字节、Base64 文本和 Data URL，请求结束后不保留参考图缓存。
 
 ```powershell
 $body = @{

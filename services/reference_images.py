@@ -35,17 +35,38 @@ def _build_reference_name(url: str, mime_type: str, index: int) -> str:
     return f"reference-{index + 1}{extension}"
 
 
+def _encode_reference_data(content: bytes, mime_type: str) -> tuple[str, str]:
+    """生成可供主备服务商共享的 Base64 文本和 Data URL。"""
+    encoded = base64.b64encode(content).decode("ascii")
+    return encoded, f"data:{mime_type};base64,{encoded}"
+
+
 def _materialize_uploaded_file(uploaded_file: UploadedFileInfo) -> UploadedFileInfo:
-    if uploaded_file.content is not None:
+    if (
+        uploaded_file.content is not None
+        and uploaded_file.base64_data is not None
+        and uploaded_file.data_url is not None
+    ):
         return uploaded_file
-    storage = uploaded_file.storage
-    storage.stream.seek(0)
-    content = storage.read()
-    storage.stream.seek(0)
+    if uploaded_file.content is not None:
+        content = uploaded_file.content
+    else:
+        storage = uploaded_file.storage
+        storage.stream.seek(0)
+        content = storage.read()
+        storage.stream.seek(0)
+    mime_type = (
+        uploaded_file.content_type
+        or mimetypes.guess_type(uploaded_file.file_name)[0]
+        or "image/png"
+    )
+    encoded, data_url = _encode_reference_data(content, mime_type)
     return replace(
         uploaded_file,
         content=content,
         content_length=len(content),
+        base64_data=uploaded_file.base64_data or encoded,
+        data_url=uploaded_file.data_url or data_url,
     )
 
 
@@ -63,7 +84,10 @@ def materialize_reference_images(
         不再包含外部 URL、且所有参考图均已保存为内存字节的生成请求。
     """
     if not request_data.file_urls and all(
-        uploaded_file.content is not None for uploaded_file in request_data.files
+        uploaded_file.content is not None
+        and uploaded_file.base64_data is not None
+        and uploaded_file.data_url is not None
+        for uploaded_file in request_data.files
     ):
         return request_data
 
@@ -94,6 +118,7 @@ def materialize_reference_images(
                 mime_type = fetched_asset.content_type
                 body = fetched_asset.body
                 source_url = fetched_asset.final_url
+            encoded, data_url = _encode_reference_data(body, mime_type)
             materialized_files.append(
                 UploadedFileInfo(
                     field_name="fileUrls",
@@ -102,6 +127,8 @@ def materialize_reference_images(
                     content_length=len(body),
                     storage=None,
                     content=body,
+                    base64_data=encoded,
+                    data_url=data_url,
                 )
             )
     except (AssetFetchError, binascii.Error, ValueError) as exc:

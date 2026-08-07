@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 
 def _read_uploaded_file_as_data_url(uploaded_file: UploadedFileInfo) -> str:
+    if uploaded_file.data_url is not None:
+        return uploaded_file.data_url
     if uploaded_file.content is not None:
         body = uploaded_file.content
     else:
@@ -40,7 +42,8 @@ def _read_uploaded_file_as_data_url(uploaded_file: UploadedFileInfo) -> str:
         body = storage.read()
         storage.stream.seek(0)
     mime_type = uploaded_file.content_type or mimetypes.guess_type(uploaded_file.file_name)[0] or "image/png"
-    return f"data:{mime_type};base64,{base64.b64encode(body).decode('ascii')}"
+    encoded = uploaded_file.base64_data or base64.b64encode(body).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
 
 
 def _build_input_references(request: GenerateImageRequest) -> list[dict[str, Any]]:
