@@ -100,6 +100,23 @@ compose
 docker compose up --build
 ```
 
+部署后确认临时参考图配置：
+
+```bash
+docker exec text-image-field-shortcut-backend /app/.venv/bin/python -c '
+from services.settings import get_app_settings
+s = get_app_settings()
+print(s.oss.temporary_reference_prefix, s.oss.temporary_url_ttl_seconds)
+'
+```
+
+带参考图完成一次生成后，日志中应依次出现 `image.reference.oss.upload.completed` 和 `image.reference.oss.cleanup.completed`，且后者的 `failedCount` 为 `0`。回滚时把 `docker-compose.yaml` 的镜像标签切换到上一稳定版本，再执行：
+
+```bash
+docker compose pull text-image-field-shortcut-backend
+docker compose up -d --force-recreate text-image-field-shortcut-backend
+```
+
 ## 接口
 
 ### 健康检查
