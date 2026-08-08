@@ -13,11 +13,16 @@ class _FakePresignResult:
 
 
 class _FakeOssClient:
-    def __init__(self, failed_delete_keys: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        failed_delete_keys: set[str] | None = None,
+        fail_presign: bool = False,
+    ) -> None:
         self.put_requests = []
         self.presign_requests = []
         self.delete_requests = []
         self.failed_delete_keys = failed_delete_keys or set()
+        self.fail_presign = fail_presign
 
     def put_object(self, request):
         self.put_requests.append(request)
@@ -25,6 +30,8 @@ class _FakeOssClient:
 
     def presign(self, request, **kwargs):
         self.presign_requests.append((request, kwargs))
+        if self.fail_presign:
+            raise RuntimeError("presign failed")
         return _FakePresignResult()
 
     def delete_object(self, request):
@@ -82,6 +89,20 @@ class TemporaryReferenceStoreTestCase(unittest.TestCase):
             store.upload(b"reference", "image/png", "request-id-from-client")
 
         self.assertEqual(client.put_requests, [])
+
+    def test_presign_failure_deletes_uploaded_object(self) -> None:
+        client = _FakeOssClient(fail_presign=True)
+        store = TemporaryReferenceStore(_build_settings(), client)
+
+        with self.assertRaisesRegex(RuntimeError, "presign failed"):
+            store.upload(b"reference", "image/png", uuid4().hex)
+
+        self.assertEqual(len(client.put_requests), 1)
+        self.assertEqual(len(client.delete_requests), 1)
+        self.assertEqual(
+            client.delete_requests[0].key,
+            client.put_requests[0].key,
+        )
 
     def test_delete_many_continues_after_single_object_failure(self) -> None:
         settings = _build_settings()

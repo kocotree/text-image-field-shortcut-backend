@@ -108,15 +108,30 @@ class TemporaryReferenceStore:
                 acl="private",
             )
         )
-        presigned = self._client.presign(
-            oss.GetObjectRequest(
-                bucket=self._settings.oss.bucket_name,
-                key=object_key,
-            ),
-            expires=timedelta(
-                seconds=self._settings.oss.temporary_url_ttl_seconds
-            ),
-        )
+        try:
+            presigned = self._client.presign(
+                oss.GetObjectRequest(
+                    bucket=self._settings.oss.bucket_name,
+                    key=object_key,
+                ),
+                expires=timedelta(
+                    seconds=self._settings.oss.temporary_url_ttl_seconds
+                ),
+            )
+        except Exception:
+            try:
+                self._client.delete_object(
+                    oss.DeleteObjectRequest(
+                        bucket=self._settings.oss.bucket_name,
+                        key=object_key,
+                    )
+                )
+            except Exception as cleanup_error:
+                logger.warning(
+                    "image.reference.oss.presign.cleanup.failed: %s",
+                    {"errorType": type(cleanup_error).__name__},
+                )
+            raise
         return TemporaryReferenceObject(
             object_key=object_key,
             signed_url=presigned.url,
