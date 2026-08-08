@@ -12,7 +12,7 @@
 - HTTP 接口骨架
 - JSON / multipart 两种输入解析
 - Gemini 生图（支持参考图与并发多图生成）
-- 参考图单次下载、内存共享和格式校验
+- 参考图单次下载、临时 OSS URL 复用和格式校验
 - 进程级图片生成并发闸门与等待队列
 - GPT Image 2 生图（size/quality/moderation）
 - Gemini 图片理解（图片→文本）
@@ -58,6 +58,8 @@ OSS_ACCESS_KEY_ID=
 OSS_ACCESS_KEY_SECRET=
 OSS_BUCKET_NAME=
 OSS_BUCKET_FOLDER_PREFIX=images
+OSS_TEMP_FOLDER_PREFIX=temp-references
+OSS_TEMP_URL_TTL_SECONDS=3600
 
 FEISHU_ALERT_ENABLED=true
 FEISHU_ALERT_WEBHOOK_URL=
@@ -72,9 +74,13 @@ FEISHU_ALERT_KEYWORD=
 
 `MEMORY_TRIM_AFTER_IMAGE_REQUEST` 是内存回收开关，默认关闭。启用后，服务会在图片响应发送完成、生成任务与等待队列均为空且进程 RSS 达到 `MEMORY_TRIM_RSS_THRESHOLD_MB` 时，在 Linux 容器内调用 `malloc_trim(0)` 归还 glibc 保留的空闲堆页。进程通过非阻塞互斥锁避免重复回收，并按照 `MEMORY_TRIM_COOLDOWN_SECONDS` 限制回收频率。裁剪期间新的生成任务会等待状态锁释放后再调用服务商。日志 `memory.image_request.release.completed` 包含触发阈值、冷却时间与回收前后 RSS；该操作可能短暂阻塞进程。
 
+生成参考图统一上传为 `OSS_TEMP_FOLDER_PREFIX` 下的私有临时对象，EasyRouter 和 OpenRouter 通过有效期为 `OSS_TEMP_URL_TTL_SECONDS` 的签名 URL 访问。同一批并发生成和服务商回退复用相同 URL，全部模型调用结束后服务会主动删除临时对象。OSS Bucket 需要配置一条仅匹配 `temp-references/` 的生命周期规则，在对象最后修改时间超过 1 天后删除，负责清理进程异常退出产生的残留对象。正式结果目录 `images/` 不得与临时目录重叠。
+
 ## 日志
 
 生产环境使用 `LOG_LEVEL=INFO` 时，每个成功业务请求记录接收和完成两条汇总日志。完成日志包含模型、服务商、兜底状态、图片数量和总耗时。图片生成接口还会记录 `queued`、`queuedImageCount` 和 `maxQueueWaitMs`；任务无法立即获得并发名额时即视为排队。单张生成、响应解析和 OSS 上传等逐项明细使用 `DEBUG` 级别，仅在排查问题时通过 `LOG_LEVEL=DEBUG` 开启。服务商失败、熔断状态变化和最终请求失败继续使用 `WARNING` 或 `ERROR`。
+
+带参考图的生成请求额外记录 `image.reference.oss.upload.completed` 和 `image.reference.oss.cleanup.completed` 两条批次汇总 INFO 日志，分别包含上传数量、总字节数、耗时以及主动删除结果。日志不会包含签名 URL、URL 查询参数或图片内容。
 
 ## Docker
 构建
@@ -108,7 +114,7 @@ Invoke-WebRequest http://127.0.0.1:5000/health
 提示词中的分图要求并禁止拼图。生成结果按任务序号上传，响应中的 `ossUrls`
 包含全部图片地址，`ossUrl` 指向第一张图片。
 
-请求中的参考图会在拆分多图任务之前下载和 Base64 编码一次，并保存在当前请求的内存中。EasyRouter 使用 Gemini `inline_data`，OpenRouter 使用 Base64 Data URL；同一批次的生成任务共享图片字节、Base64 文本和 Data URL，请求结束后不保留参考图缓存。
+请求中的参考图会在拆分多图任务之前下载一次并上传为私有 OSS 临时对象。EasyRouter 使用 Gemini `fileData.fileUri`，OpenRouter 使用 `input_references` HTTP(S) URL；同一批次的生成任务和服务商回退共享签名 URL。上传完成后服务立即释放本地参考图数据，全部模型调用结束后主动删除临时对象。
 
 ```powershell
 $body = @{
