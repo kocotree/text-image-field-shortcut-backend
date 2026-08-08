@@ -16,8 +16,6 @@ class UploadedFileInfo:
     content_length: int
     storage: Any
     content: bytes | None = None
-    base64_data: str | None = None
-    data_url: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {

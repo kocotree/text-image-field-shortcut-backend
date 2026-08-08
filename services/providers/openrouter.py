@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import base64
 import json
 import logging
-import mimetypes
 import time
 from typing import Any
 
@@ -18,11 +16,9 @@ from services.domain.errors import (
 from services.domain.provider import ImageProviderResult, TextProviderResult
 from services.gemini_service import GeminiRawResponse
 from services.http import build_request_timeout, get_http_client
-from services.reference_images import materialize_reference_images
 from services.domain.requests import (
     GenerateImageRequest,
     UnderstandImageRequest,
-    UploadedFileInfo,
 )
 from services.response_extractor import extract_text_from_gemini_response
 from services.response_normalizer import normalize_gemini_response
@@ -31,25 +27,16 @@ from services.settings import AppSettings
 logger = logging.getLogger(__name__)
 
 
-def _read_uploaded_file_as_data_url(uploaded_file: UploadedFileInfo) -> str:
-    if uploaded_file.data_url is not None:
-        return uploaded_file.data_url
-    if uploaded_file.content is not None:
-        body = uploaded_file.content
-    else:
-        storage = uploaded_file.storage
-        storage.stream.seek(0)
-        body = storage.read()
-        storage.stream.seek(0)
-    mime_type = uploaded_file.content_type or mimetypes.guess_type(uploaded_file.file_name)[0] or "image/png"
-    encoded = uploaded_file.base64_data or base64.b64encode(body).decode("ascii")
-    return f"data:{mime_type};base64,{encoded}"
-
-
 def _build_input_references(request: GenerateImageRequest) -> list[dict[str, Any]]:
+    if request.file_urls or request.files:
+        raise ProviderError(
+            provider="openrouter",
+            category=ErrorCategory.INVALID_REQUEST,
+            message="生成参考图尚未完成临时 OSS 暂存。",
+            retryable=False,
+            counts_toward_circuit=False,
+        )
     urls = [reference.url for reference in request.reference_images]
-    urls.extend(request.file_urls)
-    urls.extend(_read_uploaded_file_as_data_url(uploaded_file) for uploaded_file in request.files)
     return [
         {
             "type": "image_url",
@@ -117,21 +104,20 @@ class OpenRouterProvider:
         返回值：
             包含标准图片结果、模型和耗时的服务商结果。
         """
-        prepared_request = materialize_reference_images(request, self._settings)
         body: dict[str, Any] = {
             "model": provider_model,
-            "prompt": prepared_request.prompt,
+            "prompt": request.prompt,
             "n": 1,
-            "resolution": prepared_request.image_size,
+            "resolution": request.image_size,
         }
-        if prepared_request.aspect_ratio:
-            body["aspect_ratio"] = prepared_request.aspect_ratio
-        input_references = _build_input_references(prepared_request)
+        if request.aspect_ratio:
+            body["aspect_ratio"] = request.aspect_ratio
+        input_references = _build_input_references(request)
         if input_references:
             body["input_references"] = input_references
 
         response, elapsed_ms = self._post(
-            "/images", body, prepared_request.request_id, timeout_seconds
+            "/images", body, request.request_id, timeout_seconds
         )
         raw_response = GeminiRawResponse(
             status_code=response.status_code,

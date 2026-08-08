@@ -23,7 +23,6 @@ from services.domain.requests import (
     GenerateImageRequest,
     ReferenceImageInfo,
     UnderstandImageRequest,
-    UploadedFileInfo,
 )
 from services.settings import AppSettings, HttpClientSettings
 
@@ -217,25 +216,6 @@ def _build_endpoint(api_url: str, api_path: str) -> str:
     return f"{base_url}{api_path if not base_url.endswith('/v1') else api_path.removeprefix('/v1')}"
 
 
-def _read_file_as_inline_input(uploaded_file: UploadedFileInfo) -> PreparedReferenceInput:
-    if uploaded_file.content is not None:
-        file_bytes = uploaded_file.content
-    else:
-        storage = uploaded_file.storage
-        storage.stream.seek(0)
-        file_bytes = storage.read()
-        storage.stream.seek(0)
-    mime_type = uploaded_file.content_type or _guess_mime_type(uploaded_file.file_name)
-    return PreparedReferenceInput(
-        source_type="file_stream",
-        mime_type=mime_type,
-        file_name=uploaded_file.file_name,
-        payload=file_bytes,
-        source_ref=uploaded_file.file_name,
-        base64_data=uploaded_file.base64_data,
-    )
-
-
 def _read_url_as_inline_input(file_url: str, asset_fetcher: AssetFetcher) -> PreparedReferenceInput:
     try:
         decoded_data_url = _decode_data_url(file_url)
@@ -290,14 +270,6 @@ def _read_url_as_inline_input(file_url: str, asset_fetcher: AssetFetcher) -> Pre
     )
 
 
-def _prepare_reference_inputs(
-    request_data: GenerateImageRequest, asset_fetcher: AssetFetcher
-) -> list[PreparedReferenceInput]:
-    prepared_inputs = [_read_url_as_inline_input(file_url, asset_fetcher) for file_url in request_data.file_urls]
-    prepared_inputs.extend(_read_file_as_inline_input(uploaded_file) for uploaded_file in request_data.files)
-    return prepared_inputs
-
-
 def _prepare_url_reference_inputs(
     file_urls: list[str], asset_fetcher: AssetFetcher
 ) -> list[PreparedReferenceInput]:
@@ -306,17 +278,12 @@ def _prepare_url_reference_inputs(
 
 def _build_gemini_request_body(
     prompt: str,
-    prepared_inputs: list[PreparedReferenceInput],
     references: list[ReferenceImageInfo],
     aspect_ratio: str | None,
     image_size: str,
 ) -> dict[str, Any]:
     parts: list[dict[str, Any]] = [{"text": prompt}]
     parts.extend(_build_file_data_part(reference) for reference in references)
-    parts.extend(
-        _build_inline_data_part(item.base64_data or "", item.mime_type)
-        for item in prepared_inputs
-    )
     image_config = {
         "imageSize": image_size,
     }
@@ -352,17 +319,18 @@ def build_gemini_invocation_plan(
     返回值：
         包含接口地址、模型、参考图和请求体的调用计划。
     """
-    prepared_inputs = []
-    if not request_data.reference_images:
-        prepared_inputs = _prepare_reference_inputs(
-            request_data,
-            build_asset_fetcher(settings),
+    if request_data.file_urls or request_data.files:
+        raise ProviderError(
+            provider="easyrouter",
+            category=ErrorCategory.INVALID_REQUEST,
+            message="生成参考图尚未完成临时 OSS 暂存。",
+            retryable=False,
+            counts_toward_circuit=False,
         )
     resolved_model = resolve_gemini_model_id(request_data.model, "")
     api_path = f"/v1beta/models/{resolved_model}:generateContent"
     request_body = _build_gemini_request_body(
         request_data.prompt,
-        prepared_inputs,
         request_data.reference_images,
         request_data.aspect_ratio,
         request_data.image_size,
@@ -372,7 +340,7 @@ def build_gemini_invocation_plan(
         api_path=api_path,
         model=resolved_model,
         prompt=request_data.prompt,
-        prepared_inputs=prepared_inputs,
+        prepared_inputs=[],
         request_body=request_body,
     )
 
