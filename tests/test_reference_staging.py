@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from io import BytesIO
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from services.domain.requests import GenerateImageRequest
+from services.domain.requests import GenerateImageRequest, UploadedFileInfo
 from services.http import FetchedAsset
 from services.oss_service import TemporaryReferenceObject
 from services.reference_images import stage_reference_images
@@ -40,6 +41,56 @@ def _build_request() -> GenerateImageRequest:
 
 
 class ReferenceImageStagingTestCase(unittest.TestCase):
+    @patch("services.reference_images.TemporaryReferenceStore")
+    def test_uploaded_file_stream_is_released_before_provider_call(
+        self,
+        temporary_reference_store,
+    ) -> None:
+        image_bytes = b"\x89PNG\r\n\x1a\nreference"
+        stream = BytesIO(image_bytes)
+        storage = SimpleNamespace(
+            stream=stream,
+            read=stream.read,
+            close=MagicMock(),
+        )
+        uploaded_file = UploadedFileInfo(
+            field_name="files",
+            file_name="reference.png",
+            content_type="image/png",
+            content_length=len(image_bytes),
+            storage=storage,
+        )
+        request_data = _build_request()
+        request_data.file_urls = []
+        request_data.files = [uploaded_file]
+        temporary_object = TemporaryReferenceObject(
+            object_key="temp-references/batch/reference.png",
+            signed_url="https://bucket.example/reference.png?signature=secret",
+            mime_type="image/png",
+            content_length=len(image_bytes),
+        )
+        temporary_reference_store.return_value.upload.return_value = (
+            temporary_object
+        )
+        temporary_reference_store.return_value.delete_many.return_value = (
+            SimpleNamespace(
+                attempted_count=1,
+                deleted_count=1,
+                failed_count=0,
+            )
+        )
+
+        with stage_reference_images(
+            request_data,
+            _build_settings(),
+        ) as staged_request:
+            storage.close.assert_called_once_with()
+            self.assertIsNone(uploaded_file.storage)
+            self.assertIsNone(uploaded_file.content)
+            self.assertEqual(len(staged_request.reference_images), 1)
+
+        storage.close.assert_called_once_with()
+
     @patch("services.reference_images.TemporaryReferenceStore")
     @patch("services.reference_images.build_asset_fetcher")
     def test_staged_reference_is_cleaned_after_context_exit(

@@ -58,6 +58,30 @@ def _read_uploaded_reference(
     return body, _validate_reference_body(body, settings)
 
 
+def _release_uploaded_reference(uploaded_file: UploadedFileInfo) -> None:
+    """关闭上传文件流并解除大块本地数据引用。"""
+    storage = uploaded_file.storage
+    try:
+        close = getattr(storage, "close", None)
+        if callable(close):
+            close()
+        else:
+            stream_close = getattr(
+                getattr(storage, "stream", None),
+                "close",
+                None,
+            )
+            if callable(stream_close):
+                stream_close()
+    except Exception as exc:
+        logger.warning(
+            "image.reference.local.release.failed: %s",
+            {"errorType": type(exc).__name__},
+        )
+    uploaded_file.storage = None
+    uploaded_file.content = None
+
+
 def _read_url_reference(
     file_url: str,
     settings: AppSettings,
@@ -103,16 +127,23 @@ def stage_reference_images(
     try:
         try:
             for uploaded_file in request_data.files:
-                body, mime_type = _read_uploaded_reference(uploaded_file, settings)
-                uploaded = store.upload(body, mime_type, batch_id)
-                uploaded_objects.append(uploaded)
-                references.append(
-                    ReferenceImageInfo(
-                        url=uploaded.signed_url,
-                        mime_type=uploaded.mime_type,
-                    )
-                )
                 body = b""
+                try:
+                    body, mime_type = _read_uploaded_reference(
+                        uploaded_file,
+                        settings,
+                    )
+                    uploaded = store.upload(body, mime_type, batch_id)
+                    uploaded_objects.append(uploaded)
+                    references.append(
+                        ReferenceImageInfo(
+                            url=uploaded.signed_url,
+                            mime_type=uploaded.mime_type,
+                        )
+                    )
+                finally:
+                    body = b""
+                    _release_uploaded_reference(uploaded_file)
             for file_url in request_data.file_urls:
                 if asset_fetcher is None:
                     raise RuntimeError("参考图片下载器尚未初始化。")
@@ -177,6 +208,8 @@ def stage_reference_images(
             reference_images=references,
         )
     finally:
+        for uploaded_file in request_data.files:
+            _release_uploaded_reference(uploaded_file)
         if uploaded_objects:
             cleanup_start = time.perf_counter()
             try:
