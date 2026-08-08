@@ -9,7 +9,7 @@ from services.domain.requests import GenerateImageRequest, RequestValidationErro
 from services.generation_gate import GenerationGate, get_generation_gate
 from services.http import build_asset_fetcher
 from services.oss_service import upload_asset_to_oss
-from services.reference_images import materialize_reference_images
+from services.reference_images import stage_reference_images
 from services.response_normalizer import NormalizedGeneratedAsset
 from services.routing import FailoverRouter, build_failover_router
 from services.settings import AppSettings, get_app_settings
@@ -196,7 +196,23 @@ def _generate_batch(
             f"{settings.image_generation.max_count}."
         )
 
-    prepared_request = materialize_reference_images(request_data, settings)
+    with stage_reference_images(request_data, settings) as prepared_request:
+        return _generate_prepared_batch(prepared_request, settings)
+
+
+def _generate_prepared_batch(
+    prepared_request: GenerateImageRequest,
+    settings: AppSettings,
+) -> list[GeneratedBatchItem]:
+    """执行已经完成参考图暂存的并发图片生成批次。
+
+    参数：
+        prepared_request: 只包含服务商可访问签名 URL 的生成请求。
+        settings: 图片数量、并发上限和服务商路由配置。
+
+    返回值：
+        按请求序号排列的单图生成结果列表。
+    """
     router = build_failover_router(settings)
     generation_gate = get_generation_gate(
         settings.image_generation.max_concurrency
@@ -388,34 +404,34 @@ def generate_image_only(request_data: GenerateImageRequest) -> GeneratedImageFil
             "imageCount greater than 1 is only supported by /api/process-image."
         )
     settings = get_app_settings()
-    prepared_request = materialize_reference_images(request_data, settings)
     generation_gate = get_generation_gate(
         settings.image_generation.max_concurrency
     )
-    with generation_gate.acquire(
-        timeout_seconds=settings.image_generation.queue_timeout_seconds,
-        request_id=request_data.request_id,
-        image_index=0,
-    ) as admission:
-        execution_deadline = (
-            time.monotonic() + settings.routing.request_deadline_seconds
+    with stage_reference_images(request_data, settings) as prepared_request:
+        with generation_gate.acquire(
+            timeout_seconds=settings.image_generation.queue_timeout_seconds,
+            request_id=request_data.request_id,
+            image_index=0,
+        ) as admission:
+            execution_deadline = (
+                time.monotonic() + settings.routing.request_deadline_seconds
+            )
+            route_result = build_failover_router(settings).generate_image(
+                prepared_request,
+                deadline=execution_deadline,
+            )
+        provider_result = route_result.provider_result
+        asset = provider_result.result.assets[0]
+        return GeneratedImageFile(
+            data=_resolve_asset_bytes(asset, settings),
+            mime_type=asset.mime_type,
+            file_name=asset.file_name,
+            model=provider_result.public_model,
+            provider=provider_result.provider,
+            fallback_used=route_result.fallback_used,
+            queue_summary=GenerationQueueSummary(
+                queued=admission.queued,
+                queued_image_count=int(admission.queued),
+                max_queue_wait_ms=admission.wait_ms,
+            ),
         )
-        route_result = build_failover_router(settings).generate_image(
-            prepared_request,
-            deadline=execution_deadline,
-        )
-    provider_result = route_result.provider_result
-    asset = provider_result.result.assets[0]
-    return GeneratedImageFile(
-        data=_resolve_asset_bytes(asset, settings),
-        mime_type=asset.mime_type,
-        file_name=asset.file_name,
-        model=provider_result.public_model,
-        provider=provider_result.provider,
-        fallback_used=route_result.fallback_used,
-        queue_summary=GenerationQueueSummary(
-            queued=admission.queued,
-            queued_image_count=int(admission.queued),
-            max_queue_wait_ms=admission.wait_ms,
-        ),
-    )

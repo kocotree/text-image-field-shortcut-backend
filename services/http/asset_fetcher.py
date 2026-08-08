@@ -48,7 +48,8 @@ def _validate_public_http_url(url: str) -> None:
             raise AssetFetchError("资源地址指向了不允许访问的网络。")
 
 
-def _detect_image_content_type(body: bytes) -> str:
+def detect_image_content_type(body: bytes) -> str:
+    """根据文件头识别受支持的图片 MIME 类型。"""
     if body.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"
     if body.startswith(b"\xff\xd8\xff"):
@@ -117,7 +118,7 @@ class AssetFetcher:
                         chunks.append(chunk)
 
                     body = b"".join(chunks)
-                    detected_content_type = _detect_image_content_type(body)
+                    detected_content_type = detect_image_content_type(body)
                     if not detected_content_type:
                         raise AssetFetchError("资源内容不是受支持的图片格式。")
                     logger.debug(

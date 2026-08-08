@@ -302,8 +302,10 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
     @patch("services.pipelines.image.build_failover_router")
     @patch("services.pipelines.image.upload_asset_to_oss")
     @patch("services.reference_images.build_asset_fetcher")
+    @patch("services.reference_images.TemporaryReferenceStore")
     def test_downloads_reference_url_once_before_multi_image_generation(
         self,
+        temporary_reference_store,
         build_asset_fetcher,
         upload_asset_to_oss,
         build_failover_router,
@@ -335,18 +337,38 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
             content_type="image/png",
             final_url="https://assets.example/reference.png",
         )
+        temporary_object = SimpleNamespace(
+            object_key="temp-references/batch/reference.png",
+            signed_url=(
+                "https://bucket.example/temp-references/reference.png"
+                "?signature=secret"
+            ),
+            mime_type="image/png",
+            content_length=len(b"reference-image"),
+        )
+        temporary_reference_store.return_value.upload.return_value = (
+            temporary_object
+        )
+        temporary_reference_store.return_value.delete_many.return_value = (
+            SimpleNamespace(
+                attempted_count=1,
+                deleted_count=1,
+                failed_count=0,
+            )
+        )
 
         def generate_image(item_request, *, deadline=None):
             self.assertEqual(item_request.file_urls, [])
-            self.assertEqual(item_request.files[0].content, b"reference-image")
+            self.assertEqual(item_request.files, [])
             self.assertEqual(
-                item_request.files[0].base64_data,
-                base64.b64encode(b"reference-image").decode("ascii"),
+                item_request.reference_images[0].url,
+                temporary_object.signed_url,
             )
             self.assertEqual(
-                item_request.files[0].data_url,
-                "data:image/png;base64,cmVmZXJlbmNlLWltYWdl",
+                item_request.reference_images[0].mime_type,
+                "image/png",
             )
+            temporary_reference_store.return_value.delete_many.assert_not_called()
             return SimpleNamespace(
                 provider_result=SimpleNamespace(
                     public_model="gemini-3.1-flash-image",
@@ -383,6 +405,15 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
         build_asset_fetcher.return_value.fetch.assert_called_once_with(
             "https://assets.example/reference.png"
         )
+        temporary_reference_store.return_value.upload.assert_called_once()
+        uploaded_body, uploaded_mime_type, _ = (
+            temporary_reference_store.return_value.upload.call_args.args
+        )
+        self.assertEqual(uploaded_body, b"reference-image")
+        self.assertEqual(uploaded_mime_type, "image/png")
+        temporary_reference_store.return_value.delete_many.assert_called_once_with(
+            [temporary_object]
+        )
         self.assertEqual(
             build_failover_router.return_value.generate_image.call_count,
             2,
@@ -394,12 +425,8 @@ class MultiImageProcessPipelineTestCase(unittest.TestCase):
             1
         ].args[0]
         self.assertIs(
-            first_request.files[0].base64_data,
-            second_request.files[0].base64_data,
-        )
-        self.assertIs(
-            first_request.files[0].data_url,
-            second_request.files[0].data_url,
+            first_request.reference_images,
+            second_request.reference_images,
         )
 
 
