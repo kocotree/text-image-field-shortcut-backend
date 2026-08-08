@@ -19,6 +19,8 @@ class OssSettings:
     region: str
     bucket_name: str
     bucket_prefix: str
+    temporary_reference_prefix: str = "temp-references"
+    temporary_url_ttl_seconds: int = 3600
 
 
 @dataclass(frozen=True)
@@ -137,7 +139,15 @@ def get_app_settings() -> AppSettings:
             endpoint=oss_endpoint,
             region=endpoint_to_region(oss_endpoint),
             bucket_name=os.getenv("OSS_BUCKET_NAME", "").strip(),
-            bucket_prefix=os.getenv("OSS_BUCKET_FOLDER_PREFIX", "").strip(),
+            bucket_prefix=_normalize_bucket_prefix(
+                os.getenv("OSS_BUCKET_FOLDER_PREFIX", "")
+            ),
+            temporary_reference_prefix=_normalize_bucket_prefix(
+                os.getenv("OSS_TEMP_FOLDER_PREFIX", "temp-references")
+            ),
+            temporary_url_ttl_seconds=_read_positive_int(
+                "OSS_TEMP_URL_TTL_SECONDS", 3600
+            ),
         ),
         http=HttpSettings(
             provider=HttpClientSettings(
@@ -268,6 +278,23 @@ def validate_app_settings(settings: AppSettings) -> None:
         raise ValueError(
             "FEISHU_ALERT_ENABLED=true 时必须配置 Webhook URL 和关键词。"
         )
+    temporary_prefix = settings.oss.temporary_reference_prefix
+    permanent_prefix = settings.oss.bucket_prefix
+    if not temporary_prefix:
+        raise ValueError("OSS_TEMP_FOLDER_PREFIX 不能为空。")
+    if permanent_prefix and (
+        temporary_prefix == permanent_prefix
+        or temporary_prefix.startswith(f"{permanent_prefix}/")
+        or permanent_prefix.startswith(f"{temporary_prefix}/")
+    ):
+        raise ValueError(
+            "OSS_TEMP_FOLDER_PREFIX 不能与 OSS_BUCKET_FOLDER_PREFIX 重叠。"
+        )
+
+
+def _normalize_bucket_prefix(value: str) -> str:
+    """规范化 OSS 对象前缀，便于安全比较生命周期作用范围。"""
+    return str(value or "").strip().strip("/")
 
 
 def _read_positive_float(name: str, default: float) -> float:
