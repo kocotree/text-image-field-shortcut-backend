@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
+import mimetypes
 from pathlib import Path
 import re
+from uuid import UUID, uuid4
 
 import alibabacloud_oss_v2 as oss
 
@@ -39,6 +41,127 @@ class OssUploadResult:
         }
 
 
+@dataclass(frozen=True)
+class TemporaryReferenceObject:
+    """记录一张临时参考图在 OSS 中的对象信息。"""
+
+    object_key: str
+    signed_url: str
+    mime_type: str
+    content_length: int
+
+
+@dataclass(frozen=True)
+class TemporaryReferenceCleanupResult:
+    """记录一批临时参考图的主动删除结果。"""
+
+    attempted_count: int
+    deleted_count: int
+    failed_count: int
+
+
+class TemporaryReferenceStore:
+    """管理参考图的私有临时上传、签名访问和主动删除。"""
+
+    def __init__(self, settings: AppSettings, client: oss.Client | None = None) -> None:
+        """创建临时参考图存储器。
+
+        参数：
+            settings: 包含 OSS Bucket、临时前缀和签名时长的应用配置。
+            client: 可选的 OSS 客户端，测试时用于注入替身。
+
+        返回值：
+            无。
+        """
+        self._settings = settings
+        self._client = client or create_oss_client(settings)
+
+    def upload(
+        self,
+        body: bytes,
+        mime_type: str,
+        batch_id: str,
+    ) -> TemporaryReferenceObject:
+        """上传一张私有参考图并生成短期 GET 签名 URL。
+
+        参数：
+            body: 已完成下载和校验的参考图字节。
+            mime_type: 参考图的 MIME 类型。
+            batch_id: 服务端生成的随机批次标识，用于隔离对象目录。
+
+        返回值：
+            包含对象键、签名 URL、类型和大小的临时对象信息。
+        """
+        normalized_batch_id = _normalize_temporary_batch_id(batch_id)
+        extension = _guess_safe_extension(mime_type)
+        file_name = f"{normalized_batch_id}/{uuid4().hex}{extension}"
+        object_key = build_object_key(
+            self._settings.oss.temporary_reference_prefix,
+            file_name,
+        )
+        self._client.put_object(
+            oss.PutObjectRequest(
+                bucket=self._settings.oss.bucket_name,
+                key=object_key,
+                body=body,
+                content_type=mime_type,
+                acl="private",
+            )
+        )
+        presigned = self._client.presign(
+            oss.GetObjectRequest(
+                bucket=self._settings.oss.bucket_name,
+                key=object_key,
+            ),
+            expires=timedelta(
+                seconds=self._settings.oss.temporary_url_ttl_seconds
+            ),
+        )
+        return TemporaryReferenceObject(
+            object_key=object_key,
+            signed_url=presigned.url,
+            mime_type=mime_type,
+            content_length=len(body),
+        )
+
+    def delete_many(
+        self,
+        objects: list[TemporaryReferenceObject],
+    ) -> TemporaryReferenceCleanupResult:
+        """尽力删除一批临时参考图，不因单个对象失败中断清理。
+
+        参数：
+            objects: 当前批次已经成功上传的临时参考图列表。
+
+        返回值：
+            包含尝试数、成功数和失败数的清理汇总。
+        """
+        deleted_count = 0
+        failed_count = 0
+        for item in objects:
+            try:
+                self._client.delete_object(
+                    oss.DeleteObjectRequest(
+                        bucket=self._settings.oss.bucket_name,
+                        key=item.object_key,
+                    )
+                )
+                deleted_count += 1
+            except Exception as exc:
+                failed_count += 1
+                logger.warning(
+                    "image.reference.oss.cleanup.item.failed: %s",
+                    {
+                        "errorType": type(exc).__name__,
+                    },
+                )
+        return TemporaryReferenceCleanupResult(
+            attempted_count=len(objects),
+            deleted_count=deleted_count,
+            failed_count=failed_count,
+        )
+
+
 def build_datetime_file_name(extension: str = ".png") -> str:
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S-%f")
     return f"{timestamp}{extension if extension.startswith('.') else f'.{extension}'}"
@@ -51,6 +174,18 @@ def build_object_key(bucket_prefix: str, file_name: str) -> str:
 
 def build_object_url(bucket_name: str, endpoint: str, object_key: str) -> str:
     return f"https://{bucket_name}.{endpoint}/{object_key}"
+
+
+def _normalize_temporary_batch_id(batch_id: str) -> str:
+    """只接受服务端生成的 UUID，避免把业务标识写入 OSS 对象键。"""
+    return UUID(str(batch_id)).hex
+
+
+def _guess_safe_extension(mime_type: str) -> str:
+    """根据 MIME 类型生成不含路径字符的文件扩展名。"""
+    extension = mimetypes.guess_extension(str(mime_type or "").lower()) or ".bin"
+    normalized = re.sub(r"[^a-z0-9.]", "", extension.lower())
+    return normalized if normalized.startswith(".") and len(normalized) <= 10 else ".bin"
 
 
 def create_oss_client(settings: AppSettings) -> oss.Client:
