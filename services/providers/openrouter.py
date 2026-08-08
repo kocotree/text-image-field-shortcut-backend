@@ -47,7 +47,8 @@ def _read_uploaded_file_as_data_url(uploaded_file: UploadedFileInfo) -> str:
 
 
 def _build_input_references(request: GenerateImageRequest) -> list[dict[str, Any]]:
-    urls = list(request.file_urls)
+    urls = [reference.url for reference in request.reference_images]
+    urls.extend(request.file_urls)
     urls.extend(_read_uploaded_file_as_data_url(uploaded_file) for uploaded_file in request.files)
     return [
         {

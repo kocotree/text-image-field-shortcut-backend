@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -28,6 +28,14 @@ class UploadedFileInfo:
         }
 
 
+@dataclass(frozen=True)
+class ReferenceImageInfo:
+    """描述已经暂存且可由服务商访问的参考图。"""
+
+    url: str
+    mime_type: str
+
+
 @dataclass
 class GenerateImageRequest:
     request_id: str
@@ -40,6 +48,7 @@ class GenerateImageRequest:
     files: list[UploadedFileInfo]
     raw_payload: dict[str, Any]
     image_count: int = 1
+    reference_images: list[ReferenceImageInfo] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -52,6 +61,7 @@ class GenerateImageRequest:
             "inputType": self.input_type,
             "fileUrlCount": len(self.file_urls),
             "fileCount": len(self.files),
+            "referenceImageCount": len(self.reference_images),
             "receivedFiles": [item.to_dict() for item in self.files],
         }
 

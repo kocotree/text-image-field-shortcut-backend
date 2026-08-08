@@ -13,7 +13,11 @@ from services.http import FetchedAsset
 from services.gemini_service import build_gemini_invocation_plan
 from services.providers.openrouter import OpenRouterProvider, _build_input_references
 from services.reference_images import materialize_reference_images
-from services.domain.requests import GenerateImageRequest, UnderstandImageRequest
+from services.domain.requests import (
+    GenerateImageRequest,
+    ReferenceImageInfo,
+    UnderstandImageRequest,
+)
 from services.settings import AppSettings, OssSettings
 
 
@@ -104,6 +108,68 @@ class ModelRegistryTestCase(unittest.TestCase):
 
 
 class OpenRouterProviderTestCase(unittest.TestCase):
+    def test_easyrouter_uses_signed_reference_url_without_logging_it(self) -> None:
+        signed_url = "https://bucket.example/reference.png?signature=secret"
+        request_data = GenerateImageRequest(
+            request_id="request-signed-reference",
+            prompt="生成图片",
+            model="gemini-3.1-flash-image",
+            aspect_ratio="1:1",
+            image_size="1K",
+            input_type="file_url",
+            file_urls=[],
+            files=[],
+            raw_payload={},
+            reference_images=[
+                ReferenceImageInfo(url=signed_url, mime_type="image/png")
+            ],
+        )
+
+        plan = build_gemini_invocation_plan(
+            request_data,
+            _build_settings(),
+            "https://easyrouter.example",
+        )
+
+        self.assertEqual(
+            plan.request_body["contents"][0]["parts"][1],
+            {
+                "fileData": {
+                    "mimeType": "image/png",
+                    "fileUri": signed_url,
+                }
+            },
+        )
+        self.assertNotIn(signed_url, json.dumps(plan.to_dict()))
+        self.assertIn("<signed-url>", json.dumps(plan.to_dict()))
+
+    def test_openrouter_uses_signed_reference_url(self) -> None:
+        signed_url = "https://bucket.example/reference.png?signature=secret"
+        request_data = GenerateImageRequest(
+            request_id="request-openrouter-signed-reference",
+            prompt="生成图片",
+            model="gemini-3.1-flash-image",
+            aspect_ratio="1:1",
+            image_size="1K",
+            input_type="file_url",
+            file_urls=[],
+            files=[],
+            raw_payload={},
+            reference_images=[
+                ReferenceImageInfo(url=signed_url, mime_type="image/png")
+            ],
+        )
+
+        self.assertEqual(
+            _build_input_references(request_data),
+            [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": signed_url},
+                }
+            ],
+        )
+
     def test_generate_image_uses_official_images_schema(self) -> None:
         captured_request: httpx.Request | None = None
 

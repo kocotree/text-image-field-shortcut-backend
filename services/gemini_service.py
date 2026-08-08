@@ -21,6 +21,7 @@ from services.domain.errors import (
 from services.http import AssetFetcher, build_asset_fetcher, build_request_timeout, get_http_client
 from services.domain.requests import (
     GenerateImageRequest,
+    ReferenceImageInfo,
     UnderstandImageRequest,
     UploadedFileInfo,
 )
@@ -78,6 +79,16 @@ def _build_inline_data_part(base64_data: str, mime_type: str) -> dict[str, Any]:
     }
 
 
+def _build_file_data_part(reference: ReferenceImageInfo) -> dict[str, Any]:
+    """构建 EasyRouter Gemini 接受的外部参考图部分。"""
+    return {
+        "fileData": {
+            "mimeType": reference.mime_type,
+            "fileUri": reference.url,
+        }
+    }
+
+
 def _decode_data_url(value: str) -> tuple[str, bytes] | None:
     prefix, separator, encoded = str(value or "").partition(",")
     if not separator or not prefix.startswith("data:") or ";base64" not in prefix:
@@ -129,13 +140,27 @@ class GeminiInvocationPlan:
                 parts_preview.append({"textLength": len(item["text"])})
                 continue
 
-            inline_data = item.get("inline_data", {})
+            inline_data = item.get("inline_data")
             if isinstance(inline_data, dict):
                 parts_preview.append(
                     {
                         "inline_data": {
                             "mime_type": inline_data.get("mime_type", "application/octet-stream"),
                             "data": "<base64>",
+                        }
+                    }
+                )
+                continue
+
+            file_data = item.get("fileData")
+            if isinstance(file_data, dict):
+                parts_preview.append(
+                    {
+                        "fileData": {
+                            "mimeType": file_data.get(
+                                "mimeType", "application/octet-stream"
+                            ),
+                            "fileUri": "<signed-url>",
                         }
                     }
                 )
@@ -282,10 +307,12 @@ def _prepare_url_reference_inputs(
 def _build_gemini_request_body(
     prompt: str,
     prepared_inputs: list[PreparedReferenceInput],
+    references: list[ReferenceImageInfo],
     aspect_ratio: str | None,
     image_size: str,
 ) -> dict[str, Any]:
     parts: list[dict[str, Any]] = [{"text": prompt}]
+    parts.extend(_build_file_data_part(reference) for reference in references)
     parts.extend(
         _build_inline_data_part(item.base64_data or "", item.mime_type)
         for item in prepared_inputs
@@ -325,12 +352,18 @@ def build_gemini_invocation_plan(
     返回值：
         包含接口地址、模型、参考图和请求体的调用计划。
     """
-    prepared_inputs = _prepare_reference_inputs(request_data, build_asset_fetcher(settings))
+    prepared_inputs = []
+    if not request_data.reference_images:
+        prepared_inputs = _prepare_reference_inputs(
+            request_data,
+            build_asset_fetcher(settings),
+        )
     resolved_model = resolve_gemini_model_id(request_data.model, "")
     api_path = f"/v1beta/models/{resolved_model}:generateContent"
     request_body = _build_gemini_request_body(
         request_data.prompt,
         prepared_inputs,
+        request_data.reference_images,
         request_data.aspect_ratio,
         request_data.image_size,
     )

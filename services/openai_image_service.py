@@ -94,7 +94,11 @@ def build_openai_image_invocation_plan(
     返回值：
         包含接口地址、模型、尺寸和请求体的调用计划。
     """
-    if request_data.file_urls or request_data.files:
+    if (
+        request_data.file_urls
+        or request_data.files
+        or request_data.reference_images
+    ):
         raise RequestValidationError(
             "GPT-image models do not support reference images. "
             "Remove fileUrl/fileUrls/files or use a Gemini model."
