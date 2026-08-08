@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from io import BytesIO
 from types import SimpleNamespace
 import unittest
@@ -41,6 +42,69 @@ def _build_request() -> GenerateImageRequest:
 
 
 class ReferenceImageStagingTestCase(unittest.TestCase):
+    @patch("services.reference_images.TemporaryReferenceStore")
+    def test_request_without_reference_skips_temporary_oss(
+        self,
+        temporary_reference_store,
+    ) -> None:
+        request_data = _build_request()
+        request_data.file_urls = []
+
+        with stage_reference_images(
+            request_data,
+            _build_settings(),
+        ) as staged_request:
+            self.assertIs(staged_request, request_data)
+
+        temporary_reference_store.assert_not_called()
+
+    @patch("services.reference_images.TemporaryReferenceStore")
+    @patch("services.reference_images.build_asset_fetcher")
+    def test_data_url_is_decoded_and_uploaded_without_base64_forwarding(
+        self,
+        build_asset_fetcher,
+        temporary_reference_store,
+    ) -> None:
+        image_bytes = b"\x89PNG\r\n\x1a\nreference"
+        request_data = _build_request()
+        request_data.file_urls = [
+            "data:image/png;base64,"
+            + base64.b64encode(image_bytes).decode("ascii")
+        ]
+        temporary_object = TemporaryReferenceObject(
+            object_key="temp-references/batch/reference.png",
+            signed_url="https://bucket.example/reference.png?signature=secret",
+            mime_type="image/png",
+            content_length=len(image_bytes),
+        )
+        temporary_reference_store.return_value.upload.return_value = (
+            temporary_object
+        )
+        temporary_reference_store.return_value.delete_many.return_value = (
+            SimpleNamespace(
+                attempted_count=1,
+                deleted_count=1,
+                failed_count=0,
+            )
+        )
+
+        with stage_reference_images(
+            request_data,
+            _build_settings(),
+        ) as staged_request:
+            self.assertEqual(
+                staged_request.reference_images[0].url,
+                temporary_object.signed_url,
+            )
+
+        temporary_reference_store.return_value.upload.assert_called_once()
+        uploaded_body, uploaded_mime_type, _ = (
+            temporary_reference_store.return_value.upload.call_args.args
+        )
+        self.assertEqual(uploaded_body, image_bytes)
+        self.assertEqual(uploaded_mime_type, "image/png")
+        build_asset_fetcher.return_value.fetch.assert_not_called()
+
     @patch("services.reference_images.TemporaryReferenceStore")
     def test_uploaded_file_stream_is_released_before_provider_call(
         self,
